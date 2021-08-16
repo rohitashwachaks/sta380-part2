@@ -1,9 +1,11 @@
 ---
 title: "STA 380 Assignment Part 2"
 output: pdf_document
-Github link:
-Team: Rohitashwa Chakraborty, Meha Mehta, Dipali Pandey, Sahitya Sundar Raj Vijayanagar
+author: "Rohitashwa Chakraborty, Meha Mehta, Dipali Pandey, Sahitya Sundar Raj Vijayanagar"
+date: "8/16/2021"
 ---
+
+# [Gtihub Link](Github link: https://github.com/rohitashwachaks/sta380-part2/blob/main/data/STA%20380%20Assignment%20Part%202.Rmd)
 
 # Visual story telling part 1: green buildings
 
@@ -11,9 +13,6 @@ Team: Rohitashwa Chakraborty, Meha Mehta, Dipali Pandey, Sahitya Sundar Raj Vija
 knitr::opts_chunk$set(echo = FALSE)
 knitr::opts_chunk$set(warning = FALSE)
 knitr::opts_chunk$set(message = TRUE)
-
- 
-
 knitr::opts_chunk$set(set.seed(7))
 rm(list = ls())
 ```
@@ -278,7 +277,9 @@ xlab="Month",
 col="darkmagenta",
 las=2)
 ```
+
 ## Flights flown by Day of week
+
 * Comparatively lesser flights flown on Saturdays than other days
 
 ``` {r 2b}
@@ -313,8 +314,11 @@ xlab="Day of Week",
 col="darkmagenta",
 las=2)
 ```
+
 ## Flights flown by Carrier
+
 * Southwest Airlines leads in the number of flights flown in 2008, followed by American Airlines
+
 ``` {r 2c,  fig.align='center', fig.height = 5, fig.width = 5}
 ## Plot the flights flown by Carrier
 
@@ -328,7 +332,9 @@ las=2)
 ```
 
 ## Top 20 destinations in 2008 for flights flown from Austin
+
 * Top destinations: Dallas, Houston, Phoenix, Denver
+
 ``` {r 2d, fig.align='center', fig.height = 5, fig.width = 5}
 Origin_AUS = airport[airport$Origin=='AUS',]
 #dim(Origin_AUS)
@@ -408,7 +414,9 @@ ggplot() + geom_polygon(data = usa, aes(x=long, y = lat, group = group), size=0.
 ```
 
 ## Top 20 Origins in 2008 for flights flown to Austin
+
 * Top Origins: Dallas, Houston, Phoenix, Denver
+
 ``` {r 2f, fig.align='center', fig.height = 5, fig.width = 5}
 Origin_AUS = airport[airport$Origin=='AUS',]
 #dim(Origin_AUS)
@@ -431,6 +439,7 @@ las=2)
 ```
 
 ## Plotting average arrival delays from different origins
+
 ``` {r 2g}
 Origin_AUS = airport[airport$Origin=='AUS',]
 #dim(Origin_AUS)
@@ -848,7 +857,7 @@ clust1 = kmeans(NutrientH20, k.max, nstart=25, iter.max = 1000)
    # cat("\n\t",paste(colID),"center:",paste(clust1$centers[clusterID,colID]),",sd:",paste(s_sd[colID]),",95% Confidence Interval: (", paste(clust1$center[clusterID,colID]-1.96*s_sd[colID]),",", paste(clust1$center[clusterID,colID]+1.96*s_sd[colID]),")")
   #}
   #cat("\n")
-}
+#}
 ```
 
 ```{r 4.plot, message=TRUE, warning=FALSE}
@@ -1169,24 +1178,25 @@ Load the dataset from 'groceries.txt' as transactions of format basket. As shown
 groceries = read.transactions("../data/groceries.txt",format='basket',sep=',')
 
 ## Summarise the dataset
-str(groceries)
+#str(groceries)
 summary(groceries)
 
 ```
 
-
+## Item Frequency Plot
 Create the Item frequency plot to indicate the frequencies for different bought items. As shown, whole milk is the most frequently bought grocery item, followed by other vegetables and rolls/buns.
 ``` {r 6b}
 itemFrequencyPlot(groceries,topN=20,type="absolute",col=brewer.pal(8,'Pastel2'), main="Absolute Item Frequency Plot")
 
 ```
 
+## Association mining rules
 Creating association mining rules by randomly selecting minimum support as 0.001, confidence as 0.8, and max length=10, results in 410 rules.
 ``` {r 6c}
 # Minimum Support as 0.001, confidence as 0.8.
 association_rules <- apriori(groceries, parameter = list(supp=0.001, conf=0.8,maxlen=10))
 
-summary(association_rules)
+#summary(association_rules)
 inspect(association_rules[1:10])
 ```
 Looking at the above result, 100% of customers who bought {rice,sugar} also bought whole milk. Similarly, 90.48% of customers who bought {liquor, red/blush wine} also bought bottled beer. 
@@ -1194,18 +1204,19 @@ Looking at the above result, 100% of customers who bought {rice,sugar} also boug
 Trying more stricter rules with conf=0.9 and shorter rules with maxlen=3, results in only 10 rules as shown below:
 ``` {r 6d}
 shorter.association.rules <- apriori(groceries, parameter = list(supp=0.001, conf=0.9,maxlen=3))
-summary(shorter.association.rules)
+#summary(shorter.association.rules)
 inspect(shorter.association.rules[1:10])
 
 ```
 
+## Visualizations
 Considering the 410 association rules created by minimum support as 0.001, confidence as 0.8, and max length=10, the next step included removing subsets of larger rules, which resulted in a total of 319 rules.
 ``` {r 6e}
 subset_rules <- which(colSums(is.subset(association_rules, association_rules)) > 1) # get subset rules in vector
 length(subset_rules) 
 
 subset_association_rules <- association_rules[-subset_rules] # remove subset rules.
-summary(subset_association_rules)
+#summary(subset_association_rules)
 inspect(subset_association_rules[1:10])
 
 plot(subset_association_rules)
@@ -1213,6 +1224,7 @@ plot(subset_association_rules,method="two-key plot")
 
 ```
 
+## Recommendation rules
 Looking at the most bought item in the item frequency list, i.e.m, 'whole milk', it is possible to find the items that are most likely to be bought before buying whole milk by using appearance. Further,using conf=1, will indicate the items where 100% of customers bought whole milk, after buying these items.
 
 ``` {r 6f}
@@ -1220,14 +1232,14 @@ wholemilk_association_rules <- apriori(groceries, parameter = list(supp=0.001, c
 
 wholemilk_association_rules <- sort(wholemilk_association_rules, by='confidence',decreasing=TRUE)
 
-summary(wholemilk_association_rules)
+#summary(wholemilk_association_rules)
 inspect(wholemilk_association_rules[1:10])
 
 plot(plot(wholemilk_association_rules, method='graph'))
 ```
 As shown above, 100% of customers who bought {rice,sugar}, {canned fish,hygiene articles}, {butter,rice,root vegetables}, etc. have bought whole milk, Similarly, we find 20 such antecedents for whole milk. 
 
-Sorting rules based on confidence:
+## Sorting rules based on confidence
 ``` {r 6g}
 
 top_rules_conf <- sort(subset_association_rules, by='confidence', decreasing=TRUE)
@@ -1239,7 +1251,7 @@ plot(top10subsets_conf, method = "graph")
 A confidence of 1 indicates that whenever the items on the antecedent are bought, 100% of customers bought the item(s) on the consequent. 
 
 
-Sorting rules based on lift:
+## Sorting rules based on lift
 ``` {r 6h}
 top_rules_lift <- sort(subset_association_rules, by='lift', decreasing=TRUE)
 inspect(head(top_rules_lift)) #High lift rules
