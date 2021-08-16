@@ -1,0 +1,1252 @@
+---
+title: "STA 380 Assignment Part 2"
+output: pdf_document
+Github link:
+Team: Rohitashwa Chakraborty, Meha Mehta, Dipali Pandey, Sahitya Sundar Raj Vijayanagar
+---
+
+# Visual story telling part 1: green buildings
+
+```{r 1.setup, warning=FALSE, message=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = TRUE)
+
+ 
+
+knitr::opts_chunk$set(set.seed(7))
+rm(list = ls())
+```
+**No** we do not agree with the inference of the stat-guru.
+
+ 
+
+While the guru's explanation sounds logical, the guru relies heavily on the assumption that the _green rating_ of a building is the sole driver behind the rent of a property.
+
+ 
+
+A simple linear regression run on the rent premium against green building indicates that it is statistically very significant.
+
+ 
+
+```{r 1.slr}
+
+ 
+
+#---- Question - 1 ----
+gbuilds <- read.csv("greenbuildings.csv")
+#View(gbuilds)
+
+ 
+
+# Data conversion
+gbuilds$cluster <- as.factor(gbuilds$cluster) # 693 clusters numbered randomly
+gbuilds$renovated <- as.factor(gbuilds$renovated)
+gbuilds$class_a <- as.factor(gbuilds$class_a)
+gbuilds$class_b <- as.factor(gbuilds$class_b)
+gbuilds$LEED <- as.factor(gbuilds$LEED)
+gbuilds$Energystar <- as.factor(gbuilds$Energystar)
+gbuilds$green_rating <- as.factor(gbuilds$green_rating)
+gbuilds$net <- as.factor(gbuilds$net)
+gbuilds$amenities <- as.factor(gbuilds$amenities)
+attach(gbuilds)
+
+ 
+
+slinreg <- lm(Rent-cluster_rent~green_rating, data = gbuilds)
+summary(slinreg)$coefficients
+```
+
+ 
+
+**Coefficient of Green_Rating: 2.4125; P-Value: 8e-10**
+
+ 
+
+However, our model suffers from  an extremely high bias and has a very low $R^2$. This is a clear indicator that our model is inadequate.
+
+ 
+
+Thus we try looking for confounding variables.
+
+ 
+
+```{r 1.slr_summary}
+confoundingParams <- colnames(gbuilds)[-c(5,12,13,14,23)]#"Rent","green_rating","LEED","Energystar", Cluster Rent)]
+significant <- NULL
+i <- 0
+for(col in confoundingParams)
+{
+  i <- i+1
+  cat(paste(i,") MLR, green-building rating with",col),": ")
+  mdl <- lm(paste("Rent-cluster_rent~ green_rating+",col), data = gbuilds)
+  smry <- summary(mdl)
+  pval <- smry$coefficients["green_rating1","Pr(>|t|)"]
+  
+  if(pval > 0.05)
+  {
+    cat("Confounding\n")
+    significant <- c(significant,col)
+  }
+  else
+  {
+    cat("Non Confounding\n")
+  }
+}
+```
+Therefore, It seems that whether a building is rated as a _**Class-A**_ listing is actually an underlying confounding variable with the _Rent_ and _Green Ratings_
+
+ 
+
+THis is not surprising since a _Class-A_ listing is the most desirable property and will be superior to its neighbourhood competition in terms of not only amenities and services but will also be technologically superior and therefore will have lower costs. All these factors will raise the price and also increase the chances that the property qualifies as a _Green_ building.
+```{r 1.mlr}
+mlr <- lm(Rent-cluster_rent~ green_rating+class_a, data = gbuilds)
+smry <- summary(mlr)
+smry$coefficients[,-4]
+
+ 
+
+detach("gbuilds")
+```
+The T-statistic shows that at a 95% confidence, _Green Rating_ is in fact not statistically significant in determining the rent!
+
+ 
+
+It is the Class-A rating which determines the rent instead!!
+
+ 
+
+```{r 1.1, message = FALSE}
+require(readr)
+require(knitr)
+require(ggplot2)
+require(gridExtra)
+require(mosaic)
+require(MatchIt)
+require(cowplot)
+require(corrplot)
+options(scipen=999)
+
+ 
+
+Data <- gbuilds
+# Drop those with leasing rates < 10%
+Data = Data[Data$leasing_rate >= 10,]
+# Define revenue per square foot measure
+Data$RevPSF = Data$Rent * Data$leasing_rate / 100
+ggplot(Data, aes(x = as.factor(green_rating), y = RevPSF), fill = green_rating) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Revenue per Square Foot") +
+  labs(title = "Comparing Revenue per Square Foot of Not Green v Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  coord_flip() #+
+  #stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red")
+```
+
+ 
+
+The medians (black lines on the box-plots) and means (the red stars) of green and non-green building revenue per square foot show that green buildings have higher revenue. 
+The non -green buildings have a lower mean than the green buildings   
+
+ 
+
+## Visualizations
+
+ 
+
+
+```{r ,out.width=c('50%', '50%'), fig.show='hold', echo=FALSE}
+ggplot(data=Data) + 
+  geom_point(mapping=aes(x=cluster_rent, y=Rent, colour=green_rating)) +
+  labs(x="Cluster Rent", y='Rent', title = 'Green buildings: Rent vs. Cluster Rent',
+       color='Green building')
+ggplot(data=Data) + 
+  geom_point(mapping=aes(x=age, y=Rent, colour=green_rating))+
+  labs(x="Age", y='Rent', title = 'Green buildings: Rent vs. Age of the Building',
+       color='Green building')
+ggplot(data=Data) + 
+  geom_point(mapping=aes(x=size, y=Rent, colour=green_rating)) +
+  labs(x="Size", y='Rent', title = 'Green buildings: Rent vs. Size of the Rental space in the building (square foot)',
+       color='Green building')
+ggplot(data=Data) + 
+  geom_point(mapping=aes(x=age, y=Rent, colour=class_a))+
+  labs(x="Age", y='Rent', title = 'Class A: Age of the building vs. Rent',
+       color='Class A building')
+```
+
+ 
+
+##Inference
+  
+* There is a correlation between rent and the cluster rent
+* The size of the rental space in the building is also correlated with the Rent
+* A Class buildings appear to be younger
+* Age does not not seem to have a high correlation with rent 
+* Class A buildings have higher rent  
+
+ 
+
+
+```{r out.width=c('50%', '50%'), fig.show='hold', echo=FALSE}
+g = ggplot(Data, aes(x=age))
+g + geom_density(aes(fill=factor(green_rating)), alpha=0.4)+
+  labs(x="Age", y='Density', title = 'Age Distribution',
+       fill='Green building')
+ggplot(Data, aes(class_a, ..count..)) + geom_bar(aes(fill = green_rating), position = "dodge")+
+  labs(x="Class a", y='Number of buildings', title = 'Class A vs Green Buildings',
+       fill='Green building')
+g = ggplot(Data, aes(x=size))
+g + geom_density(aes(fill=factor(green_rating)), alpha=0.4)+
+  labs(x="Size", y='Density', title = 'Size Distribution',
+       fill='Green building')
+medians <- aggregate(Rent ~  class_a, Data, median)
+ggplot(data=Data, aes(x=factor(class_a), y=Rent, fill=class_a)) + geom_boxplot()+
+  #stat_summary(fun.y=median, colour="darkred", geom="point", 
+   #            shape=18, size=3,show.legend = FALSE) + 
+  geom_text(data = medians, aes(label = Rent, y = Rent - 20)) +
+  labs(x="Class A", y='Rent', title = 'Class A vs Rent',
+       fill='Class A')
+
+ 
+
+```
+
+
+# Visual story telling part 2: flights at ABIA
+
+``` {r setup2,include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+
+require(ggmap)
+require(tidyr)
+require(dplyr)
+require(ggplot2)
+require(maps)
+require(stringr)
+require(viridis)
+
+## Load the dataset
+airport = read.csv('ABIA.csv')
+
+## Load the airport lat-long data
+airport_codes <- read.csv("airport-codes.csv", header = TRUE)
+
+
+```
+
+## Flights flown by Month
+* Number of flights flying during the last 4 months of the year much lesser than other months
+``` {r 2a}
+month <- airport$Month
+
+month[month == 1] <- "January"
+month[month == 2] <- "February"
+month[month == 3] <- "March"
+month[month == 4] <- "April"
+month[month == 5] <- "May"
+month[month == 6] <- "June"
+month[month == 7] <- "July"
+month[month == 8] <- "August"
+month[month == 9] <- "September"
+month[month == 10] <- "October"
+month[month == 11] <- "November"
+month[month == 12] <- "December"
+
+monthf = factor(month,
+             levels = c("January", 
+                          "February", 
+                          "March", 
+                          "April", 
+                          "May",
+                          "June",
+                          "July",
+                          "August",
+                          "September",
+                          "October",
+                          "November",
+                          "December"),
+             ordered=TRUE)
+
+
+## Plot the flights flown by Month number
+barplot(table(monthf),
+main="Flights flown in 2008 by Month",
+xlab="Month",
+col="darkmagenta",
+las=2)
+```
+## Flights flown by Day of week
+* Comparatively lesser flights flown on Saturdays than other days
+
+``` {r 2b}
+## Plot the flights flown by Day of Week
+
+Day <- airport$DayOfWeek
+
+Day[Day == 1] <- "Monday"
+Day[Day == 2] <- "Tuesday"
+Day[Day == 3] <- "Wednesday"
+Day[Day == 4] <- "Thursday"
+Day[Day == 5] <- "Friday"
+Day[Day == 6] <- "Saturday"
+Day[Day == 7] <- "Sunday"
+
+
+Dayf = factor(Day,
+             levels = c("Monday", 
+                        "Tuesday", 
+                        "Wednesday", 
+                        "Thursday", 
+                        "Friday",
+                        "Saturday",
+                        "Sunday"),
+             ordered=TRUE)
+
+
+## Plot the flights flown by Day of Week
+barplot(table(Dayf),
+main="Flights flown in 2008 by Day of Week",
+xlab="Day of Week",
+col="darkmagenta",
+las=2)
+```
+## Flights flown by Carrier
+* Southwest Airlines leads in the number of flights flown in 2008, followed by American Airlines
+``` {r 2c,  fig.align='center', fig.height = 5, fig.width = 5}
+## Plot the flights flown by Carrier
+
+barplot(sort(table(airport$UniqueCarrier),decreasing=TRUE),
+main="Flights flown in 2008 by Unique Carrier",
+xlab="Carrier Code",
+col="darkmagenta",
+las=2)
+
+
+```
+
+## Top 20 destinations in 2008 for flights flown from Austin
+* Top destinations: Dallas, Houston, Phoenix, Denver
+``` {r 2d, fig.align='center', fig.height = 5, fig.width = 5}
+Origin_AUS = airport[airport$Origin=='AUS',]
+#dim(Origin_AUS)
+
+Dest_AUS = airport[airport$Dest=='AUS',]
+#dim(Dest_AUS)
+
+
+## Plot the flights flown by Carrier
+Origin_AUS_sort <- sort(table(Origin_AUS$Dest),decreasing=TRUE)
+#Origin_AUS_sort[1:20]
+
+barplot(Origin_AUS_sort[1:20],
+main="Flights flown from Austin in 2008 by Top 20 Destinations",
+xlab="Destination Airport Code",
+col="darkmagenta",
+las=2)
+```
+
+
+``` {r 2e}
+#names(airport_codes)
+for (i in 1:nrow(airport)) {
+  airport$OriginCoords[i] = airport_codes$coordinates[which(airport_codes$iata_code == airport$Origin[i])]
+  airport$DestCoords[i] = airport_codes$coordinates[which(airport_codes$iata_code == airport$Dest[i])]
+}
+
+lat = NULL
+lon = NULL
+
+for (i in 1:nrow(airport)) {
+  lat[i] = as.numeric(str_split(airport$OriginCoords[i], ", ", n = 2)[[1]][1])
+  lon[i] = as.numeric(str_split(airport$OriginCoords[i], ", ", n = 2)[[1]][2])
+}
+airport$OriginLat = lat
+airport$OriginLon = lon
+
+lat = NULL
+lon = NULL
+
+for (i in 1:nrow(airport)) {
+  lat[i] = as.numeric(str_split(airport$DestCoords[i], ", ", n = 2)[[1]][1])
+  lon[i] = as.numeric(str_split(airport$DestCoords[i], ", ", n = 2)[[1]][2])
+}
+airport$DestLat = lat
+airport$DestLon = lon
+
+Origin_AUS_sort = as.data.frame(Origin_AUS_sort)
+colnames(Origin_AUS_sort) <- c("Destination", "Flight Count")
+
+for (i in 1:nrow(Origin_AUS_sort)) {
+  Origin_AUS_sort$DestCoords[i] = airport_codes$coordinates[which(airport_codes$iata_code == Origin_AUS_sort$Destination[i])]
+}
+
+lat = NULL
+lon = NULL
+
+for (i in 1:nrow(Origin_AUS_sort)) {
+  lat[i] = as.numeric(str_split(Origin_AUS_sort$DestCoords[i], ", ", n = 2)[[1]][1])
+  lon[i] = as.numeric(str_split(Origin_AUS_sort$DestCoords[i], ", ", n = 2)[[1]][2])
+}
+Origin_AUS_sort$DestLat = lat
+Origin_AUS_sort$DestLon = lon
+colnames(Origin_AUS_sort) <- c("Destination", "Flight_Count", "DestCoords", "DestLat",   "DestLon")
+
+
+airportlatlon <- subset(airport, select = c(Origin, OriginLat, OriginLon))
+abialatlon <- filter(airportlatlon, Origin=="AUS") #separate df for abia
+abialatlon <- abialatlon[1,1:3]
+
+
+usa <- map_data("state")
+ggplot() + geom_polygon(data = usa, aes(x=long, y = lat, group = group), size=0.1, colour='white',  fill="#285663") + coord_fixed(1.3) + 
+  geom_curve(data=Origin_AUS_sort[1:10,], aes(x = DestLon, y = DestLat, xend = abialatlon$OriginLon , yend = abialatlon$OriginLat ,col = Flight_Count,color=Flight_Count), size = .2, curvature = 0) + 
+  geom_point(data=Origin_AUS_sort[1:10,], aes(x = DestLon, y = DestLat), col = "lightgreen", shape = "x")+  scale_color_gradient(low = "#FFBF00", high = "#CC5500") + ggtitle("Flight Count by Top 10 Destinations with Origin - Austin") + theme(plot.title = element_text(hjust=0.5))
+
+```
+
+## Top 20 Origins in 2008 for flights flown to Austin
+* Top Origins: Dallas, Houston, Phoenix, Denver
+``` {r 2f, fig.align='center', fig.height = 5, fig.width = 5}
+Origin_AUS = airport[airport$Origin=='AUS',]
+#dim(Origin_AUS)
+
+Dest_AUS = airport[airport$Dest=='AUS',]
+#dim(Dest_AUS)
+
+
+## Plot the flights flown by Carrier
+Dest_AUS_sort <- sort(table(Dest_AUS$Origin),decreasing=TRUE)
+#Dest_AUS_sort[1:20]
+
+barplot(Dest_AUS_sort[1:20],
+main="Flights flown to Austin in 2008 by Top 20 Origins",
+xlab="Origin Airport Code",
+col="darkmagenta",
+las=2)
+
+
+```
+
+## Plotting average arrival delays from different origins
+``` {r 2g}
+Origin_AUS = airport[airport$Origin=='AUS',]
+#dim(Origin_AUS)
+
+Dest_AUS = airport[airport$Dest=='AUS',]
+#dim(Dest_AUS)
+
+
+## Plot the flights flown by Carrier
+Dest_AUS_sort <- sort(table(Dest_AUS$Origin),decreasing=TRUE)
+#Dest_AUS_sort[1:20]
+
+Dest_AUS_clean <- Dest_AUS %>% drop_na(ArrDelay)
+
+barplot(sort(tapply(Dest_AUS_clean$ArrDelay, Dest_AUS_clean$Origin, mean),decreasing=TRUE)[1:20],
+main="Average Arrival Delays to Austin from different Destinations",
+xlab="Origin Airport Code",
+col="darkmagenta",
+las=2)
+
+```
+
+```{r 2h, echo=FALSE, message=FALSE}
+
+total_flights = nrow(airport)
+arrDelayedOver180 = length(which(airport$ArrDelay > 180))
+arrDelayedOver60 = length(which(airport$ArrDelay <= 180 & airport$ArrDelay > 60))
+arrDelayedOver0 = length(which(airport$ArrDelay <= 60 & airport$ArrDelay > 0))
+arrDelayedUnder0 = length(which(airport$ArrDelay <= 0))
+arrDelaySlices = c(arrDelayedOver180, arrDelayedOver60, arrDelayedOver0, arrDelayedUnder0)
+arrDelayPct = round(arrDelaySlices/sum(arrDelaySlices)*100, digits = 2)
+arrDelayLbls = c('% Over 180', '% Over 60', '% Under 60', '% Early')
+arrDelayLbls = paste(arrDelayPct, arrDelayLbls) # add percents to labels
+pie(arrDelaySlices,arrDelayLbls, col = magma(5), main = "Arrival Delays Chart")
+``` 
+
+* Flight arrival delay statistics
+
+```{r 2i, echo=FALSE}
+depDelayedOver180 = length(which(airport$DepDelay > 180))
+depDelayedOver60 = length(which(airport$DepDelay <= 180 & airport$ArrDelay > 60))
+depDelayedOver0 = length(which(airport$DepDelay <= 60 & airport$ArrDelay > 0))
+depDelayedUnder0 = length(which(airport$DepDelay <= 0))
+depDelaySlices = c(depDelayedOver180, depDelayedOver60, depDelayedOver0, depDelayedUnder0)
+depDelayPct = round(depDelaySlices/sum(depDelaySlices)*100, digits = 2)
+depDelayLbls = c('% Over 180', '% Over 60', '% Under 60', '% Early')
+depDelayLbls = paste(depDelayPct, depDelayLbls) # add percents to labels
+pie(depDelaySlices,depDelayLbls, col = viridis(5), main = "Departure Delays Chart")
+```
+
+* Flight departure delay statistics
+
+## Flight Delays by Origin Airport
+
+* To Determine which airports have maximum average delays for flights to ABIA
+
+```{r 2j,  echo=FALSE, warning = FALSE, message = FALSE}
+
+airport_wise_delays = aggregate(airport[, c(16)], list(airport$Origin), mean, na.action = na.omit)
+for (i in 1:nrow(airport_wise_delays)) {
+  airport_wise_delays$OriginCoords[i] = airport_codes$coordinates[which(airport_codes$iata_code == airport_wise_delays$Group.1[i])]
+}
+for (i in 1:nrow(airport_wise_delays)) {
+  airport_wise_delays$lat[i] = str_split(airport_wise_delays$OriginCoords[i], ", ", n = 2)[[1]][1]
+  airport_wise_delays$lon[i] = str_split(airport_wise_delays$OriginCoords[i], ", ", n = 2)[[1]][2]
+}
+map.opts <- theme(panel.grid.minor=element_blank(), 
+                  panel.grid.major=element_blank(),
+                  panel.background=element_blank(), 
+                  axis.title.x=element_blank(), 
+                  axis.title.y=element_blank(), 
+                  axis.line=element_blank(), 
+                  axis.ticks=element_blank(), 
+                  axis.text.y = element_text(colour="#FFFFFF"), 
+                  axis.text.x = element_text(colour = "#FFFFFF"))
+
+states <- map_data("state")
+ggplot(states) + 
+  geom_polygon(aes(x = long, y = lat,group=group), size = 0.1, colour= "white", fill="#285663") + 
+  map.opts +
+  coord_fixed(1.3) +
+  geom_point(data=airport_wise_delays, aes(x=as.numeric(lon), y=as.numeric(lat),size = x, colour = x)) + 
+  scale_color_gradient(low = "#FFBF00", high = "#CC5500") +
+  ggtitle("Delays by Origin Airport") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+# Portfolio modeling
+
+Three ETF portfolios of different asset classes were invested into to test their respective four-trading-week Value at Risk at the 5% level using past five years of data (starting from 2016-01-01). The three classes picked were HY Bonds, Corporate (Investment Grade) Bonds and Government Bonds. $100,000 were allocated for each of the three portfolios containing five ETFs with equal weights (20% in each ETF) which would rebalance daily i.e. each of the ETFs in a portfolio will always comprise 20% of the total wealth at the beginning of each trading day. 
+
+``` {r setup3,include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+
+require(mosaic)
+require(quantmod)
+require(foreach)
+
+```
+
+
+High Yield Bonds Portfolio
+
+* For this portfolio, the US traded high yield bond ETFs were selected. 
+This portfolio contains the follow ETFs:
+-	HYG: Beta = 0.37; Weight = 20%
+-	JNK: Beta = 0.40; Weight = 20%
+-	USHY: Beta = 0.40; Weight = 20%
+-	SRLN: Beta = 0.34; Weight = 20%
+-	BKLN: Beta = 0.37; Weight = 20%
+- Weighted average Beta of the portfolio is 0.376.
+
+* This portfolio was selected as High Yield Bonds ETFs offer investors exposure to debt issued by below investment grade corporations. These ETFs invest in junk bonds, senior loans, as well as international below investment grade debt.These products have offered numerous ways for investors to take advantage of this space. High yields can be a great addition to a yield-hungry portfolio, as they can offer yields into the double digits for those willing to take on the risks that come along with it. The high returns come from riskier bond choices who have to pay out higher ratios to compensate investors for high risks. This means that the holdings of these ETFs will have higher chances of defaults, and could potentially leave investors out to dry. But for those who have done their homework on the holdings of a particular “junk” bond fund have the ability to generate strong returns from these powerful products.
+
+``` {r 3a}
+HYBONDS = c("HYG", "JNK", "USHY", "SRLN", "BKLN")
+myprices = getSymbols(HYBONDS, from = "2016-01-01")
+ for(ticker in HYBONDS) {
+  expr = paste0(ticker, "a = adjustOHLC(", ticker, ")")
+  eval(parse(text=expr))
+}
+# Combining all the returns in a matrix
+returns1 = cbind(	ClCl(HYGa),
+                      ClCl(JNKa),
+                      ClCl(USHYa),
+                      ClCl(SRLNa),
+                      ClCl(BKLNa))
+returns1 = as.matrix(na.omit(returns1))
+``` 
+
+Investment Grade Bonds Portfolio
+
+* For this portfolio, the US traded investment grade bond ETFs were selected.
+-	VCIT: Beta = 0.18; Weight = 20% 
+-	LQD: Beta = 0.19; Weight = 20%
+-	VCSH: Beta = 0.08; Weight = 20%
+-	IGSB: Beta = 0.08; Weight = 20%
+-	IGIB: Beta = 0.20; Weight = 20%
+- Weighted average Beta of the portfolio is 0.146.
+
+* This portfolio was selected to gain exposure to investment grade corporate bonds, which provides low risk, stable return profile as they are invested in investment-grade credit (highly) rated corporates. However, the returns are greater than the government bonds. Bonds included in these funds can feature varying maturities and are issued by companies from multiple industries.
+
+```{r 3b}
+IGBONDS = c("VCIT", "LQD", "VCSH", "IGSB", "IGIB")
+myprices = getSymbols(IGBONDS, from = "2016-01-01")
+for(ticker in IGBONDS) {
+  expr = paste0(ticker, "a = adjustOHLC(", ticker, ")")
+  eval(parse(text=expr))
+}
+# Combine all the returns in a matrix
+returns2 = cbind(	ClCl(VCITa),
+                      ClCl(LQDa),
+                      ClCl(VCSHa),
+                      ClCl(IGSBa),
+                      ClCl(IGIBa))
+returns2 = as.matrix(na.omit(returns2))
+```
+
+Government Bonds Portfolio
+
+* For this portfolio, the US traded government bond ETFs were selected. 
+This portfolio contains the follow ETFs:
+-	SHY: Beta = -0.03; Weight = 20% 
+-	TLT: Beta = -0.25; Weight = 20%
+-	GOVT: Beta = -0.09; Weight = 20%
+-	SHV: Beta = -0.01; Weight = 20%
+-	IEF: Beta = -0.13; Weight = 20%
+- Weighted average Beta of the portfolio is -0.102
+
+* This portfolio was selected to gain exposure to fixed income securities issued by government agencies. Bonds featured in these ETFs include U.S. Treasuries of varying maturities, floating rate Treasury bonds, and TIPS. The aim for this portfolio is to earn stable return while taking a limited amount of risk. The bonds are mostly either backed by the US Treasury or state governments, the default risk is near zero implying an extremely low risk as indicated by their negative Betas. 
+
+
+```{r 3c}
+GOVTBONDS = c("SHY", "TLT", "GOVT", "SHV", "IEF")
+myprices = getSymbols(GOVTBONDS, from = "2015-08-01")
+for(ticker in GOVTBONDS) {
+  expr = paste0(ticker, "a = adjustOHLC(", ticker, ")")
+  eval(parse(text=expr))
+}
+# Combine all the returns in a matrix
+returns3 = cbind(	ClCl(SHYa),
+                      ClCl(TLTa),
+                      ClCl(GOVTa),
+                      ClCl(SHVa),
+                      ClCl(IEFa))
+returns3 = as.matrix(na.omit(returns3))
+```
+
+
+
+```{r 3d}
+# Simulate many different possible futures for a period of 20 trading days (High Yield Bonds ETFs Portfolio)
+set.seed(1)
+initial_wealth = 100000
+simulation1 = foreach(i=1:2000, .combine='rbind') %do% {
+  total_wealth = initial_wealth
+  weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
+  holdings = weights * total_wealth
+  n_days = 20
+  wealthtracker = rep(0, n_days)
+  for(today in 1:n_days) {
+    return.today = resample(returns1, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    total_wealth = sum(holdings)
+    wealthtracker[today] = total_wealth
+  }
+  wealthtracker
+}
+# Wealth Distribution for 20 trading days
+hist(simulation1[,n_days], 25, col = "light yellow", 
+     main = "High Yield Bonds Portfolio_Wealth", xlab = "Total Wealth")
+# Profit/loss
+mean(simulation1[,n_days])
+mean(simulation1[,n_days] - initial_wealth)
+hist(simulation1[,n_days]- initial_wealth, breaks=30, col = "light yellow",
+     main = "High Yield Bonds Portfolio_Gain/Loss", xlab = "Total Dollar Gain/Loss")
+# 5% VaR (USD):
+VaR_1 <- quantile(simulation1[,n_days]- initial_wealth, prob=0.05)
+VaR_1
+# 5% VaR (return%):
+VaR_1_r <- VaR_1/100000
+VaR_1_r
+```
+VaR=4.688555% 
+
+
+```{r 3e}
+# Simulate many different possible futures for a period of 20 trading days (Investment Grade Bonds ETFs Portfolio)
+set.seed(1)
+initial_wealth = 100000
+simulation2 = foreach(i=1:2000, .combine='rbind') %do% {
+  total_wealth = initial_wealth
+  weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
+  holdings = weights * total_wealth
+  n_days = 20
+  wealthtracker = rep(0, n_days)
+  for(today in 1:n_days) {
+    return.today = resample(returns2, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    total_wealth = sum(holdings)
+    wealthtracker[today] = total_wealth
+  }
+  wealthtracker
+}
+# Wealth Distribution for 20 trading days
+hist(simulation2[,n_days], 25, col = "light blue", 
+     main = "Investment Grade Bonds Portfolio_Wealth", xlab = "Total Wealth")
+# Profit/loss
+mean(simulation2[,n_days])
+mean(simulation2[,n_days] - initial_wealth)
+hist(simulation2[,n_days]- initial_wealth, breaks=30, col = "light blue", 
+     main = "Investment Grade Bonds Portfolio_Gain/Loss", xlab = "Total Dollar Gain/Loss")
+# 5% VaR (USD):
+VaR_2 <- quantile(simulation2[,n_days]- initial_wealth, prob=0.05)
+VaR_2
+# 5% VaR (return%):
+VaR_2_r <- VaR_2/100000
+VaR_2_r
+```
+
+VaR=-1.956064% 
+
+
+```{r 3f}
+# Simulate many different possible futures for a period of 20 trading days (Government Bonds ETFs Portfolio)
+set.seed(1)
+initial_wealth = 100000
+simulation3 = foreach(i=1:2000, .combine='rbind') %do% {
+  total_wealth = initial_wealth
+  weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
+  holdings = weights * total_wealth
+  n_days = 20
+  wealthtracker = rep(0, n_days)
+  for(today in 1:n_days) {
+    return.today = resample(returns3, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    total_wealth = sum(holdings)
+    wealthtracker[today] = total_wealth
+  }
+  wealthtracker
+}
+# Wealth Distribution for 20 trading days
+hist(simulation3[,n_days], 25, col = "light blue", 
+     main = "Government Bonds Portfolio_Wealth", xlab = "Total Wealth")
+# Profit/loss
+mean(simulation3[,n_days])
+mean(simulation3[,n_days] - initial_wealth)
+hist(simulation3[,n_days]- initial_wealth, breaks=30, col = "light blue", 
+     main = "Government Bonds Portfolio_Gain/Loss", xlab = "Total Dollar Gain/Loss")
+# 5% VaR (USD):
+VaR_3 <- quantile(simulation3[,n_days]- initial_wealth, prob=0.05)
+VaR_3
+# 5% VaR (return%):
+VaR_3_r <- VaR_3/100000
+VaR_3_r
+
+```
+
+-0.01948256
+-1.948256%
+
+* 5% Value at Risk for the three portfolios were:
+-	High Yield Bond Portfolio: -$6,997.02 or -4.69%
+-	Investment Grade Bond Portfolio: -1.96%
+-	Government Bond Portfolio: -1.95%
+
+* Investing $100,000 in each of the portfolios for 20 trading days with daily rebalancing, there is a 5% chance for our total gain/loss for (1) the High Yield Bond Portfolio to be less than -4.69%, (2) the Invesment Grade Bond Portfolio to be less than -1.96%, (3) the Government Bond Portfolio to be 1.95%. It is clearly seen that the High Yield portfolio has chances of higher loss due to higher risk involved. The Investment Grade and Government Bond Portfolios appear to have comparatively low and similar loss chances as they are low risk, with the Governemnt one having the least Value at Risk. 
+
+
+
+
+# Market segmentation
+
+
+```{r setup4, warning=FALSE, message=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = TRUE)
+
+knitr::opts_chunk$set(set.seed(7))
+rm(list = ls())
+require(cluster)
+require(ggplot2)
+```
+
+# Market Segmentation
+
+## Data Pre-Processing
+
+In our Dataset, we observe the following:
+
+- _X_ column is essentially the Turk's ID. Thus, this column has been set as the row index and dropped consequently
+- Mean-normalised all columns and scaled them to a 0-1 rage _(Performed Z-transformation)_ to make the measurements comparable
+
+```{r 4.1, include=FALSE}
+# clustering
+# principal component analysis
+
+NutrientH20 <- read.csv("social_marketing.csv")
+length(unique(NutrientH20$X)) == dim(NutrientH20)[1]
+# TRUE. Thus X column is the ID
+
+row.names(NutrientH20) <- NutrientH20$X
+NutrientH20 <- NutrientH20[,-1]
+columns <- colnames(NutrientH20)
+NutrientH20 <- data.frame(NutrientH20)
+NutrientH20 <- scale(NutrientH20)
+```
+
+## Elbow method
+
+```{r 4.elbow}
+#Elbow Method for finding the optimal number of clusters
+# Compute and plot wss for k = 2 to k = 15.
+k.max <- 25
+wss <- sapply(1:k.max, 
+              function(k){kmeans(NutrientH20, k, nstart=5,iter.max = 1000 )$tot.withinss})
+
+plot(1:k.max, wss,
+     type="b", pch = 19, frame = FALSE, 
+     xlab="Number of clusters K",
+     ylab="Total within-clusters sum of squares")
+```
+The Elbow Plot above indicates a kink at _**K = 14**_. This could be a good estimate of the number of clusters we go choose.
+
+However, This method is too _visual_ and the differences are not clearly discernible.
+Thus, let us re-validate our results with the calculation of the **GAP** metric.
+
+## Gap Index
+```{r 4.GAP}
+nH20_gap <- clusGap(NutrientH20, FUN = kmeans, nstart = 5,
+                       K.max = 20, B = 3, iter.max = 1000)
+plot(nH20_gap)
+nH20_gap$Tab
+
+find_peaks <- function (x, m = 3){
+     shape <- diff(sign(diff(x, na.pad = FALSE)))
+     pks <- sapply(which(shape < 0), FUN = function(i){
+        z <- i - m + 1
+        z <- ifelse(z > 0, z, 1)
+        w <- i + m + 1
+        w <- ifelse(w < length(x), w, length(x))
+        if(all(x[c(z : i, (i + 2) : w)] <= x[i + 1])) return(i + 1) else return(numeric(0))
+    })
+     pks <- unlist(pks)
+     pks
+}
+
+k.max <- find_peaks(nH20_gap$Tab[,"gap"], m = 1)[1]
+
+cat("\n\nOptimum cluster size is:",paste(k.max),"\n")
+```
+
+From the above plots and output statistic, we see that the local optima of the Cluster Gap plot is achieved at _**K = 14**_ clusters. Thus, we go ahead with dividing the consumer base in 14 clusters for targeted marketing.
+
+## Running K-Means with 14 clusters
+```{r 4.kmeans, message=TRUE}
+# Run k-means with 215 clusters and 25 starts
+clust1 = kmeans(NutrientH20, k.max, nstart=25, iter.max = 1000)
+
+
+# What are the clusters?
+#for(clusterID in c(1: k.max))
+#{
+ # data_cluster <- NutrientH20[(clust1$cluster == clusterID),]
+  #s_mean <- apply(data_cluster,2,mean)
+  #s_sd <- apply(data_cluster,2,sd)
+  
+  #cat("\n\nMetrics for Cluster #",paste(clusterID),":")
+  #for(colID in columns){
+   # cat("\n\t",paste(colID),"center:",paste(clust1$centers[clusterID,colID]),",sd:",paste(s_sd[colID]),",95% Confidence Interval: (", paste(clust1$center[clusterID,colID]-1.96*s_sd[colID]),",", paste(clust1$center[clusterID,colID]+1.96*s_sd[colID]),")")
+  #}
+  #cat("\n")
+}
+```
+
+```{r 4.plot, message=TRUE, warning=FALSE}
+# A few plots with cluster membership shown
+# qplot is in the ggplot2 require
+qplot(NutrientH20[,"religion"], xlab = "Religion",
+      NutrientH20[,"sports_fandom"], y_lab = "Sports Fandom",
+      color=factor(clust1$cluster))
+qplot(NutrientH20[,"politics"], xlab = "Politics",
+      NutrientH20[,"news"], y_lab = "News",
+      color=factor(clust1$cluster))
+# Compare versus within-cluster average distances from the first run
+cat("\nCluster Whithinness:",paste(clust1$withinss))
+cat("\nTotal Whithinness:",paste(clust1$tot.withinss))
+cat("\nCluster Betweenness:",paste(clust1$betweenss))
+```
+
+
+
+
+# Author attribution
+
+
+* Building a dictionary from training data (half of ReutersC50)
+
+```{r 5.1.0, echo=FALSE, warning = FALSE, message = FALSE}
+require(tm) 
+require(tidyverse)
+require(slam)
+require(proxy)
+require(Rcpp)
+# reader function used in class
+readerPlain = function(fname){
+				readPlain(elem=list(content=readLines(fname)), 
+							id=fname, language='en') }
+```
+
+```{r 5.1.1, echo=FALSE, warning = FALSE, message = FALSE}
+# expand all file paths in training data
+train = Sys.glob('ReutersC50/C50train/*')
+# initiate empty lists to be used in for loop
+trainingArticles = NULL
+labels = NULL
+# read in all training articles
+for (name in train) {
+  author = substring(name, first=21) # set author name
+  #print(author)
+  article = Sys.glob(paste0(name,'/*.txt')) # expand articles for each name
+  trainingArticles = append(trainingArticles,article) # append articles to list
+  labels = append(labels, rep(author, length(article))) # append labels to list
+}
+# read all the plain text files in the list
+combined = lapply(trainingArticles,readerPlain)
+# set article names
+names(combined) = trainingArticles
+names(combined) = sub('.txt','',names(combined))
+# creates the corpus
+trainCorpus = Corpus(VectorSource(combined))
+```
+
+```{r 5.1.2, echo=FALSE, warning = FALSE, message = FALSE}
+## Pre-processing
+## tm_map just maps some function to every document in the corpus
+trainArticles = trainCorpus %>%
+  tm_map(content_transformer(tolower))  %>%             # make everything lowercase
+  tm_map(content_transformer(removeNumbers)) %>%        # remove numbers
+  tm_map(content_transformer(removePunctuation)) %>%    # remove punctuation
+  tm_map(content_transformer(stripWhitespace))          # remove excess white-space
+DTM_train = DocumentTermMatrix(trainArticles)
+DTM_train
+trainArticles = tm_map(trainArticles, content_transformer(removeWords), stopwords("en"))
+DTM_train = DocumentTermMatrix(trainArticles)
+DTM_train
+DTM_train = removeSparseTerms(DTM_train, .99)
+DTM_train
+DTM_train = weightTfIdf(DTM_train)
+DTM_train <- as.matrix(DTM_train)
+```
+
+Pre-processing steps: 
+
+* Convert to lowercase
+
+* Numbers removed
+
+* Punctuation removed
+
+* Unnecessary white space trimmed
+
+Data reduced to 2500 documents with 32,669 terms
+
+* Stop words removed
+
+Data reduced to 32,570 terms.
+
+* Sparse terms removed
+
+Data reduced to 3393 terms.
+
+* Word counts changed to TF-IDF weights.
+
+* Process repeated for testing data. 3448 terms in the testing data compared to 3393 terms in the training data. We must consider how to treat these new words.
+
+```{r 5.2.1, echo=FALSE, warning = FALSE, message = FALSE}
+# expand all file paths in training data
+test = Sys.glob('ReutersC50/C50test/*')
+# initiate empty lists to be used in for loop
+testingArticles = NULL
+labels_test = NULL
+# read in all training articles
+for (name in test) {
+  author = substring(name, first=20) # set author name
+  article = Sys.glob(paste0(name,'/*.txt')) # expand articles for each name
+  testingArticles = append(testingArticles,article) # append articles to list
+  labels_test = append(labels_test, rep(author, length(article))) # append labels to list
+}
+# read all the plain text files in the list
+combined = lapply(testingArticles,readerPlain)
+# set article names
+names(combined) = testingArticles
+names(combined) = sub('.txt','',names(combined))
+# creates the corpus
+testCorpus = Corpus(VectorSource(combined))
+```
+
+```{r 5.2.2, echo=FALSE, warning = FALSE, message = FALSE}
+## Some pre-processing/tokenization steps.
+## tm_map just maps some function to every document in the corpus
+testArticles = testCorpus %>%
+  tm_map(content_transformer(tolower))  %>%             # make everything lowercase
+  tm_map(content_transformer(removeNumbers)) %>%        # remove numbers
+  tm_map(content_transformer(removePunctuation)) %>%    # remove punctuation
+  tm_map(content_transformer(stripWhitespace))          # remove excess white-space
+DTM_test = DocumentTermMatrix(testArticles)
+DTM_test
+testArticles = tm_map(testArticles, content_transformer(removeWords), stopwords("en"))
+DTM_test = DocumentTermMatrix(testArticles)
+DTM_test
+DTM_test = removeSparseTerms(DTM_test, .99)
+DTM_test
+DTM_test = weightTfIdf(DTM_test)
+DTM_test <- as.matrix(DTM_test)
+```
+
+* 55 new terms observed in the testing data
+* new terms ignored since they constitute less than 2% of the training data
+
+```{r 5.3.0, echo=FALSE, warning = FALSE, message = FALSE}
+#forces test to take only identical col names as train
+DTM_test = DocumentTermMatrix(testArticles, list(dictionary=colnames(DTM_train)))
+DTM_test = weightTfIdf(DTM_test)
+DTM_test
+DTM_test <- as.matrix(DTM_test)
+```
+
+The training set now has 3393 predictors. Principal Component Analysis (PCA) is performed to reduce the number of predictors as follows:
+
+* Eliminate columns that have 0 entries. This eliminates columns where the term is not found in any data in the test or train set. This ensures the term lists are identical and only use columns common between train and test data, leaving 8,317,500 elements in both the train and test matrices. 
+
+```{r 5.4.0, echo=FALSE, warning = FALSE, message = FALSE}
+DTM_train <- DTM_train[,which(colSums(DTM_train) != 0)]
+DTM_test <- DTM_test[,which(colSums(DTM_test) != 0)]
+DTM_train = DTM_train[,intersect(colnames(DTM_test),colnames(DTM_train))]
+DTM_test = DTM_test[,intersect(colnames(DTM_test),colnames(DTM_train))]
+```
+
+* Once the data is in the same format, use PCA to choose the number of principal components. 
+
+```{r 5.4.1, echo=FALSE, warning = FALSE, message = FALSE}
+pca = prcomp(DTM_train, scale =TRUE) #remember to scale the data
+predictions = predict(pca, newdata = DTM_test)
+plot(cumsum(pca$sdev^2/sum(pca$sdev^2)), ylab = 'Cumulative variance explained', xlab = 'Number of principal components', main = 'Summary of Principal Component Variance Analysis')
+#lets stop at 1000 principal components
+#reformat the data
+train = data.frame(pca$x[,1:1000])
+train['author']=labels
+train_load = pca$rotation[,1:1000]
+test <- scale(DTM_test) %*% train_load
+test <- as.data.frame(test)
+test['author']=labels_test
+```
+
+* Choice of number of components is based on desired level of goodness of fit
+* At 1000 principal components ~80% of the variance is explained
+* Data pre-processing is complete and models can be run
+
+Four models run to predict author attribution:
+
+* KNN
+
+* Random Forest
+
+* Naive Bayes
+
+* Logistic regression
+
+### KNN
+
+KNN model run with k = 1, other values of k did not improve the testing or training accuracy. 
+
+```{r 5.5.1, echo=FALSE, warning = FALSE, message = FALSE}
+require(class)
+set.seed(1234)
+xtrain = subset(train, select = c(1:1000))
+ytrain = as.factor(train[,1001])
+xtest = subset(test, select = c(1:1000))
+ytest = as.numeric(factor(test[,1001]))
+knn = knn(xtrain, xtest, ytrain, k = 1)
+checkKNN = as.data.frame(cbind(knn,ytest))
+accuracy = ifelse(as.integer(knn)==as.integer(ytest),1,0)
+#sum(accuracy)
+sum(accuracy)/nrow(checkKNN)
+#32.6% accuracy
+```
+* Maximum testing accuracy obtained with KNN : 32.6% 
+
+### Random Forest
+
+* Random Forest model run with m=31 (square root of 1000, the number of total variables). 
+
+```{r 5.5.2, echo=FALSE, warning = FALSE, message = FALSE}
+require(randomForest)
+set.seed(1234)
+mod_rand<-randomForest(as.factor(author)~.,data=train, mtry=31,importance=TRUE)
+pre_rand<-predict(mod_rand,data=test)
+tab_rand<-as.data.frame(table(pre_rand,as.factor(test$author)))
+predicted<-pre_rand
+actual<-as.factor(test$author)
+temp<-as.data.frame(cbind(actual,predicted))
+temp$flag<-ifelse(temp$actual==temp$predicted,1,0)
+sum(temp$flag)/nrow(temp)
+#78.4% accuracy
+```
+
+* Maximum testing accuracy obtained with Random Forest : 78.4%
+* Large improvement over KNN
+
+### Naive Bayes
+
+* Naive Bayes model used to predict the testing data from a training model. 
+
+```{r 5.5.3, echo=FALSE, warning = FALSE, message = FALSE}
+require('e1071')
+mod_naive=naiveBayes(as.factor(author)~.,data=train)
+pred_naive=predict(mod_naive,test)
+require(caret)
+predicted_nb=pred_naive
+actual_nb=as.factor(test$author)
+temp_nb<-as.data.frame(cbind(actual_nb,predicted_nb))
+temp_nb$flag<-ifelse(temp_nb$actual_nb==temp_nb$predicted_nb,1,0)
+sum(temp_nb$flag)/nrow(temp_nb)
+#31.4% accuracy
+```
+
+* Maximum testing accuracy obtained with Naive Bayes : 31.44% 
+* Reduction in accuracy from KNN
+
+### Multinomial Logistic Regression 
+
+* Lastly, multinomial logistic regression performed with only the first 18 Principal Components
+
+```{r 5.5.4, echo=FALSE, warning = FALSE, message = FALSE}
+##other package
+require(nnet)
+subTrain <- train[,c(1:18,1001)]
+multinomModel <- multinom(author ~., data=subTrain)
+predicted_scores <- predict(multinomModel, test, "probs")
+predicted_class <- predict(multinomModel, test)
+train = data.frame(pca$x[,1:1000])
+train['author']=labels
+train_load = pca$rotation[,1:1000]
+test <- scale(DTM_test) %*% train_load
+test <- as.data.frame(test)
+test['author']=labels_test
+#table(predicted_class, test$author)
+1-mean(as.character(predicted_class) != as.character(test$author))
+#46.52% accuracy
+```
+
+* Maximum testing accuracy obtained with Logistic Regression : 46.52%
+* Better than KNN or Naive Bayes
+* Lower than Random Forest
+
+Comparing the accuracy of the various models:
+
+```{r 5.6, echo=FALSE, warning = FALSE, message = FALSE}
+require(ggplot2)
+models <- c('Random Forest','Logistic Regression','KNN','Naive Bayes')
+accuracy <- c(78.4,46.52,32.6,31.4)
+table <- data.frame(models, accuracy)
+table
+ggplot(table, aes(x=models,y=accuracy))+geom_col()+ ggtitle("Summary of Attribution Models Classification Accuracy")
+```
+
+**In summary, the random forest model has the highest classification accuracy of ~78.4% on the testing dataset.**
+
+
+
+
+
+# Association rule mining
+
+``` {r setup6,include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+
+require(tidyverse)
+require(arules)
+require(arulesViz)
+require(tidyr)
+require(RColorBrewer)
+```
+
+Load the dataset from 'groceries.txt' as transactions of format basket. As shown, there are 2159 transactions with just one item in the basket, 1643 transactions with two items in the basket, and so on.
+``` {r 6a}
+## Load the dataset
+groceries = read.transactions("../data/groceries.txt",format='basket',sep=',')
+
+## Summarise the dataset
+str(groceries)
+summary(groceries)
+
+```
+
+
+Create the Item frequency plot to indicate the frequencies for different bought items. As shown, whole milk is the most frequently bought grocery item, followed by other vegetables and rolls/buns.
+``` {r 6b}
+itemFrequencyPlot(groceries,topN=20,type="absolute",col=brewer.pal(8,'Pastel2'), main="Absolute Item Frequency Plot")
+
+```
+
+Creating association mining rules by randomly selecting minimum support as 0.001, confidence as 0.8, and max length=10, results in 410 rules.
+``` {r 6c}
+# Minimum Support as 0.001, confidence as 0.8.
+association_rules <- apriori(groceries, parameter = list(supp=0.001, conf=0.8,maxlen=10))
+
+summary(association_rules)
+inspect(association_rules[1:10])
+```
+Looking at the above result, 100% of customers who bought {rice,sugar} also bought whole milk. Similarly, 90.48% of customers who bought {liquor, red/blush wine} also bought bottled beer. 
+
+Trying more stricter rules with conf=0.9 and shorter rules with maxlen=3, results in only 10 rules as shown below:
+``` {r 6d}
+shorter.association.rules <- apriori(groceries, parameter = list(supp=0.001, conf=0.9,maxlen=3))
+summary(shorter.association.rules)
+inspect(shorter.association.rules[1:10])
+
+```
+
+Considering the 410 association rules created by minimum support as 0.001, confidence as 0.8, and max length=10, the next step included removing subsets of larger rules, which resulted in a total of 319 rules.
+``` {r 6e}
+subset_rules <- which(colSums(is.subset(association_rules, association_rules)) > 1) # get subset rules in vector
+length(subset_rules) 
+
+subset_association_rules <- association_rules[-subset_rules] # remove subset rules.
+summary(subset_association_rules)
+inspect(subset_association_rules[1:10])
+
+plot(subset_association_rules)
+plot(subset_association_rules,method="two-key plot")
+
+```
+
+Looking at the most bought item in the item frequency list, i.e.m, 'whole milk', it is possible to find the items that are most likely to be bought before buying whole milk by using appearance. Further,using conf=1, will indicate the items where 100% of customers bought whole milk, after buying these items.
+
+``` {r 6f}
+wholemilk_association_rules <- apriori(groceries, parameter = list(supp=0.001, conf=1),appearance = list(default="lhs",rhs="whole milk"))
+
+wholemilk_association_rules <- sort(wholemilk_association_rules, by='confidence',decreasing=TRUE)
+
+summary(wholemilk_association_rules)
+inspect(wholemilk_association_rules[1:10])
+
+plot(plot(wholemilk_association_rules, method='graph'))
+```
+As shown above, 100% of customers who bought {rice,sugar}, {canned fish,hygiene articles}, {butter,rice,root vegetables}, etc. have bought whole milk, Similarly, we find 20 such antecedents for whole milk. 
+
+Sorting rules based on confidence:
+``` {r 6g}
+
+top_rules_conf <- sort(subset_association_rules, by='confidence', decreasing=TRUE)
+inspect(head(top_rules_conf)) #High-confidence rules
+
+top10subsets_conf <- head(subset_association_rules, n = 10, by = "confidence")
+plot(top10subsets_conf, method = "graph")
+```
+A confidence of 1 indicates that whenever the items on the antecedent are bought, 100% of customers bought the item(s) on the consequent. 
+
+
+Sorting rules based on lift:
+``` {r 6h}
+top_rules_lift <- sort(subset_association_rules, by='lift', decreasing=TRUE)
+inspect(head(top_rules_lift)) #High lift rules
+
+top10subsets_conf <- head(subset_association_rules, n = 10, by = "lift")
+plot(top10subsets_conf, method = "graph")
+
+```
+A rule with lift of 11.23 for {liquore,red/blush wine}->{bottled beer} indicates that the items in the antecedent and consequent are ~11 times more likely to be bought together than bought individually.
+
