@@ -1,0 +1,123 @@
+---
+title: "market-segmentation.rmd"
+author: "Nemo"
+date: "8/16/2021"
+output: pdf_document
+---
+
+```{r 4.setup, warning=FALSE, message=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = TRUE)
+
+knitr::opts_chunk$set(set.seed(7))
+rm(list = ls())
+require(cluster)
+require(ggplot2)
+```
+
+# Market Segmentation
+
+## Data Pre-Processign
+
+In our Datase, we observe the following:
+
+- _X_ column is essentialy the Turk's ID. Thus, this column has been set as the row index and dropped consequently
+- Mean-normalised all columns and scaled them to a 0-1 rage _(Performed Z-transformation)_ to make the measurements comparable
+
+```{r 4.1, include=FALSE}
+# clustering
+# principal component analysis
+
+NutrientH20 <- read.csv("./data/social_marketing.csv")
+length(unique(NutrientH20$X)) == dim(NutrientH20)[1]
+# TRUE. Thus X column is the ID
+
+row.names(NutrientH20) <- NutrientH20$X
+NutrientH20 <- NutrientH20[,-1]
+columns <- colnames(NutrientH20)
+NutrientH20 <- data.frame(NutrientH20)
+NutrientH20 <- scale(NutrientH20)
+```
+
+## Elbow method
+
+```{r 4.elbow}
+#Elbow Method for finding the optimal number of clusters
+# Compute and plot wss for k = 2 to k = 15.
+k.max <- 25
+wss <- sapply(1:k.max, 
+              function(k){kmeans(NutrientH20, k, nstart=5,iter.max = 1000 )$tot.withinss})
+
+plot(1:k.max, wss,
+     type="b", pch = 19, frame = FALSE, 
+     xlab="Number of clusters K",
+     ylab="Total within-clusters sum of squares")
+```
+The Elbow Plot above indicates a kink at _**K = 14**_. This could be a good estimate of the number of clusters we go choose.
+
+However, This method is too _visual_ and the differences are not clearly discernible.
+Thus, let us re-validate our results with the calculation of the **GAP** metric.
+
+## Gap Index
+```{r 4.GAP}
+nH20_gap <- clusGap(NutrientH20, FUN = kmeans, nstart = 5,
+                       K.max = 20, B = 3, iter.max = 1000)
+plot(nH20_gap)
+nH20_gap$Tab
+
+find_peaks <- function (x, m = 3){
+     shape <- diff(sign(diff(x, na.pad = FALSE)))
+     pks <- sapply(which(shape < 0), FUN = function(i){
+        z <- i - m + 1
+        z <- ifelse(z > 0, z, 1)
+        w <- i + m + 1
+        w <- ifelse(w < length(x), w, length(x))
+        if(all(x[c(z : i, (i + 2) : w)] <= x[i + 1])) return(i + 1) else return(numeric(0))
+    })
+     pks <- unlist(pks)
+     pks
+}
+
+k.max <- find_peaks(nH20_gap$Tab[,"gap"], m = 1)[1]
+
+cat("\n\nOptimum cluster size is:",paste(k.max),"\n")
+```
+
+From the above plots and output statistic, we see that the local optima of the Cluster Gap plot is achieved at _**K = 14**_ clusters. Thus, we go ahead with dividing the consumer base in 14 clusters for targeted marketing.
+
+## Running K-Means with 14 clusters
+```{r 4.kmeans, message=TRUE}
+# Run k-means with 215 clusters and 25 starts
+clust1 = kmeans(NutrientH20, k.max, nstart=25, iter.max = 1000)
+
+
+# What are the clusters?
+for(clusterID in c(1: k.max))
+{
+  data_cluster <- NutrientH20[(clust1$cluster == clusterID),]
+  s_mean <- apply(data_cluster,2,mean)
+  s_sd <- apply(data_cluster,2,sd)
+  
+  cat("\n\nMetrics for Cluster #",paste(clusterID),":")
+  for(colID in columns){
+    cat("\n\t",paste(colID),"center:",paste(clust1$centers[clusterID,colID]),",sd:",paste(s_sd[colID]),",95% Confidence Interval: (", paste(clust1$center[clusterID,colID]-1.96*s_sd[colID]),",", paste(clust1$center[clusterID,colID]+1.96*s_sd[colID]),")")
+  }
+  cat("\n")
+}
+```
+
+```{r 4.plot, message=TRUE, warning=FALSE}
+# A few plots with cluster membership shown
+# qplot is in the ggplot2 library
+qplot(NutrientH20[,"religion"], xlab = "Religion",
+      NutrientH20[,"sports_fandom"], y_lab = "Sports Fandom",
+      color=factor(clust1$cluster))
+qplot(NutrientH20[,"politics"], xlab = "Politics",
+      NutrientH20[,"news"], y_lab = "News",
+      color=factor(clust1$cluster))
+# Compare versus within-cluster average distances from the first run
+cat("\nCluster Whithinness:",paste(clust1$withinss))
+cat("\nTotal Whithinness:",paste(clust1$tot.withinss))
+cat("\nCluster Betweenness:",paste(clust1$betweenss))
+```

@@ -1,0 +1,166 @@
+---
+title: "green-buildings"
+author: "Nemo"
+date: "8/16/2021"
+output: pdf_document
+---
+```{r 1.setup, warning=FALSE, message=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = TRUE)
+
+knitr::opts_chunk$set(set.seed(7))
+rm(list = ls())
+```
+**No** we do not agree with the inference of the stat-guru.
+
+While the guru's explanation sounds logical, the guru relies heavily on the assumption that the _green rating_ of a building is the sole driver behind the rent of a property.
+
+A simple linear regression run on the rent premium against green building indicates that it is statistically very signficant.
+
+```{r 1.slr}
+
+#---- Question - 1 ----
+gbuilds <- read.csv("./data/greenbuildings.csv")
+#View(gbuilds)
+
+# Data conversion
+gbuilds$cluster <- as.factor(gbuilds$cluster) # 693 clusters numbered randomly
+gbuilds$renovated <- as.factor(gbuilds$renovated)
+gbuilds$class_a <- as.factor(gbuilds$class_a)
+gbuilds$class_b <- as.factor(gbuilds$class_b)
+gbuilds$LEED <- as.factor(gbuilds$LEED)
+gbuilds$Energystar <- as.factor(gbuilds$Energystar)
+gbuilds$green_rating <- as.factor(gbuilds$green_rating)
+gbuilds$net <- as.factor(gbuilds$net)
+gbuilds$amenities <- as.factor(gbuilds$amenities)
+attach(gbuilds)
+
+slinreg <- lm(Rent-cluster_rent~green_rating, data = gbuilds)
+summary(slinreg)$coefficients
+```
+
+**Coefficient of Green_Rating: 2.4125; P-Value: 8e-10**
+
+However, our model suffers from  an extremely high bias and has a very low $R^2$. This is a clear indicator that our model is inadequate.
+
+Thus we try looking for confounding variables.
+
+```{r 1.slr_summary}
+confoundingParams <- colnames(gbuilds)[-c(5,12,13,14,23)]#"Rent","green_rating","LEED","Energystar", Cluster Rent)]
+significant <- NULL
+i <- 0
+for(col in confoundingParams)
+{
+  i <- i+1
+  cat(paste(i,") MLR, green-building rating with",col),": ")
+  mdl <- lm(paste("Rent-cluster_rent~ green_rating+",col), data = gbuilds)
+  smry <- summary(mdl)
+  pval <- smry$coefficients["green_rating1","Pr(>|t|)"]
+  
+  if(pval > 0.05)
+  {
+    cat("Confounding\n")
+    significant <- c(significant,col)
+  }
+  else
+  {
+    cat("Non Confounding\n")
+  }
+}
+```
+Therefore, It seems that whether a building is rated as a _**Class-A**_ listing is actually an underlying confounding variable with the _Rent_ and _Green Ratings_
+
+THis is not surprising since a _Class-A_ listing is the most desirable property and will be superior to its neighbourhood competition in terms of not only amenities and services but will also be technologically superior and therefore will have lower costs. All these factors will raise the price and also increase the chances that the property qualifies as a _Green_ building.
+```{r 1.mlr}
+mlr <- lm(Rent-cluster_rent~ green_rating+class_a, data = gbuilds)
+smry <- summary(mlr)
+smry$coefficients[,-4]
+
+detach("gbuilds")
+```
+The T-statistic shows that at a 95% confidence, _Green Rating_ is in fact not statistically significant in determining the rent!
+
+It is the Class-A rating which determines the rent instead!!
+
+```{r 1.1, message = FALSE}
+require(readr)
+require(knitr)
+require(ggplot2)
+require(gridExtra)
+require(mosaic)
+require(MatchIt)
+require(cowplot)
+require(corrplot)
+options(scipen=999)
+
+Data <- gbuilds
+# Drop those with leasing rates < 10%
+Data = Data[Data$leasing_rate >= 10,]
+# Define revenue per square foot measure
+Data$RevPSF = Data$Rent * Data$leasing_rate / 100
+ggplot(Data, aes(x = as.factor(green_rating), y = RevPSF), fill = green_rating) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Revenue per Square Foot") +
+  labs(title = "Comparing Revenue per Square Foot of Not Green v Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  coord_flip() #+
+  #stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red")
+```
+
+The medians (black lines on the box-plots) and means (the red stars) of green and non-green building revenue per square foot show that green buildings have higher revenue. 
+The non -green buildings have a lower mean than the green buildings   
+
+## Visualizations
+
+
+```{r ,out.width=c('50%', '50%'), fig.show='hold', echo=FALSE}
+ggplot(data=Data) + 
+  geom_point(mapping=aes(x=cluster_rent, y=Rent, colour=green_rating)) +
+  labs(x="Cluster Rent", y='Rent', title = 'Green buildings: Rent vs. Cluster Rent',
+       color='Green building')
+ggplot(data=Data) + 
+  geom_point(mapping=aes(x=age, y=Rent, colour=green_rating))+
+  labs(x="Age", y='Rent', title = 'Green buildings: Rent vs. Age of the Building',
+       color='Green building')
+ggplot(data=Data) + 
+  geom_point(mapping=aes(x=size, y=Rent, colour=green_rating)) +
+  labs(x="Size", y='Rent', title = 'Green buildings: Rent vs. Size of the Rental space in the building (square foot)',
+       color='Green building')
+ggplot(data=Data) + 
+  geom_point(mapping=aes(x=age, y=Rent, colour=class_a))+
+  labs(x="Age", y='Rent', title = 'Class A: Age of the building vs. Rent',
+       color='Class A building')
+```
+
+##Inference
+  
+* There is a correlation between rent and the cluster rent
+* The size of the rental space in the building is also correlated with the Rent
+* A Class buildings appear to be younger
+* Age does not not seem to have a high correlation with rent 
+* Class A buildings have higher rent  
+
+
+```{r out.width=c('50%', '50%'), fig.show='hold', echo=FALSE}
+g = ggplot(Data, aes(x=age))
+g + geom_density(aes(fill=factor(green_rating)), alpha=0.4)+
+  labs(x="Age", y='Density', title = 'Age Distribution',
+       fill='Green building')
+ggplot(Data, aes(class_a, ..count..)) + geom_bar(aes(fill = green_rating), position = "dodge")+
+  labs(x="Class a", y='Number of buildings', title = 'Class A vs Green Buildings',
+       fill='Green building')
+g = ggplot(Data, aes(x=size))
+g + geom_density(aes(fill=factor(green_rating)), alpha=0.4)+
+  labs(x="Size", y='Density', title = 'Size Distribution',
+       fill='Green building')
+medians <- aggregate(Rent ~  class_a, Data, median)
+ggplot(data=Data, aes(x=factor(class_a), y=Rent, fill=class_a)) + geom_boxplot()+
+  #stat_summary(fun.y=median, colour="darkred", geom="point", 
+   #            shape=18, size=3,show.legend = FALSE) + 
+  geom_text(data = medians, aes(label = Rent, y = Rent - 20)) +
+  labs(x="Class A", y='Rent', title = 'Class A vs Rent',
+       fill='Class A')
+
+```

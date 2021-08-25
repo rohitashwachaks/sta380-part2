@@ -1,0 +1,1309 @@
+---
+title: "full-rmd"
+author: "Nemo"
+date: "8/15/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Visual story telling part 1: green buildings
+
+Predicting expected profitability is essential for investments, especially large capital projects like a $100M 250,000 sq.ft. mixed-use building. From the initial analysis, it appears that the 5% expected premium for green certification is a good investment, as costs may be recovered in less than 8 years. 
+
+```{r 1.1, echo = FALSE, warning = FALSE, message = FALSE}
+library(readr)
+library(knitr)
+library(ggplot2)
+library(gridExtra)
+library(mosaic)
+library(MatchIt)
+library(cowplot)
+library(corrplot)
+options(scipen=999)
+file <- "https://raw.githubusercontent.com/jgscott/STA380/master/data/greenbuildings.csv"
+green <- read_csv(file)
+# Drop those with leasing rates < 10%
+green = green[green$leasing_rate >= 10,]
+# Define revenue per square foot measure
+green$RevPSF = green$Rent * green$leasing_rate / 100
+ggplot(green, aes(x = as.factor(green_rating), y = RevPSF), fill = green_rating) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Revenue per Square Foot") +
+  labs(title = "Comparing Revenue per Square Foot of Not Green v Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  coord_flip() +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red")
+```
+
+We see from the graph above that the medians (black lines on the boxplots) and means (represented by the red stars) of green and non-green building revenue per square foot are different. The not green buildings have a mean of \$24.50, while the green buildings have a mean of \$27.00. This shows that from both means and medians, there is additional revenue on average for green buildings.  
+
+However, there are a number of issues with the original staff member's analysis: 
+
+* The staff member used the median in his analysis rather than the mean. While he is correct that the median is more robust to outliers, it is important to consider outliers in this analysis. Thus, the mean is a better measure of spread for comparing the two groups, and the **treatment of outliers** should be considered in more detail.
+
+* Green and non-green buildings are **inherently different.** Green buildings are more likely to be newer, bigger, Class A developments. Variables like age, size, and class of the building are confounding variables that impact both whether or not a building is green and its revenue per square foot. Because these building groups have confounding variables, we cannot simply compare their means.
+
+* We must consider the **time value of money.** Performing an NPV analysis and talking to the construction company about reducing the cost of the project will supplement our analysis. 
+
+First, instead of dropping all buildings with leasing rates less than 10%, we chose to drop only those with leasing rates less than 1% to consider more of the outliers. 
+
+**What variables appear to be confounding?** 
+
+First, I built a correlation matrix to identify how each of the building predictors are related. 
+
+* We see that a building's Green Rating is slightly positively correlated with Class A, more desirable buildings and negatively correlated with Age. 
+
+* Building Revenue per Square Foot, Rent, and Cluster Rent are all positively correlated. This makes sense as buildings with a higher rent per square foot should have a higher revenue per square foot. Cluster rent and rent tend to be positively correlated as well, as buildings will have similar rents to other buildings in their local markets.  
+
+```{r 1.1.0, echo = FALSE, warning = FALSE, message = FALSE}
+green <- read_csv(file)
+# Drop those with leasing rates < 10%
+green = green[green$leasing_rate >= 10,]
+# Define revenue per square foot measure
+green$RevPSF = green$Rent * green$leasing_rate / 100
+green$empl_gr = as.numeric(green$empl_gr)
+corrplot(cor(green), type = "upper", tl.col = "black", tl.srt = 90, p.mat = green$P, sig.level = 0.01, insig = "blank",number.cex=1, tl.cex = 0.75)
+```
+
+I then compared boxplots of each of the predictor variables for Not Green versus Green buildings, and the charts for the predictors that may be confounding variables are shown below. 
+
+```{r 1.1.a, echo = FALSE, warning = FALSE, message = FALSE}
+green <- read_csv(file)
+# Drop those with leasing rates < 1%
+green = green[green$leasing_rate >= 1,]
+# Define revenue per square foot measure
+green$RevPSF = green$Rent * green$leasing_rate / 100
+p1 = ggplot(green, aes(x = as.factor(green_rating), y = size)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Size") +
+  labs(title = "Size") +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p2 = ggplot(green, aes(x = as.factor(green_rating), y = empl_gr)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Employment Growth Rate") +
+  labs(title = "Comparing Employment Growth Rate of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p3 = ggplot(green, aes(x = as.factor(green_rating), y = Rent)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Rent") +
+  labs(title = "Comparing Rent of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p4 = ggplot(green, aes(x = as.factor(green_rating), y = leasing_rate)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Leasing Rate") +
+  labs(title = "Comparing Leasing Rate of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p5 = ggplot(green, aes(x = as.factor(green_rating), y = stories)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Stories") +
+  labs(title = "Comparing Stories of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p6 = ggplot(green, aes(x = as.factor(green_rating), y = age)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Age") +
+  labs(title = "Age") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p7 = ggplot(green, aes(x = as.factor(green_rating), y = renovated)) + 
+  geom_boxplot() + 
+  xlab("Renovated") +
+  labs(title = "Renovations") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p8 = ggplot(green, aes(x = as.factor(green_rating), y = class_a)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Class A") +
+  labs(title = "Class A") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p9 = ggplot(green, aes(x = as.factor(green_rating), y = class_b)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Class B") +
+  labs(title = "Class B") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p10 = ggplot(green, aes(x = as.factor(green_rating), y = net)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Net") +
+  labs(title = "Comparing Net Contract Basis of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p11 = ggplot(green, aes(x = as.factor(green_rating), y = amenities)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Amenities") +
+  labs(title = "Amenities") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p12 = ggplot(green, aes(x = as.factor(green_rating), y = cd_total_07)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Cooling Degree Days") +
+  labs(title = "Cooling DD") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p13 = ggplot(green, aes(x = as.factor(green_rating), y = hd_total07)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Heating Degree Days") +
+  labs(title = "Heating DD") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p14 = ggplot(green, aes(x = as.factor(green_rating), y = total_dd_07)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Total Degree Days") +
+  labs(title = "Total DD") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p15 = ggplot(green, aes(x = as.factor(green_rating), y = Precipitation)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Precipitation") +
+  labs(title = "Precipiation") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p16 = ggplot(green, aes(x = as.factor(green_rating), y = Gas_Costs)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Gas Costs") +
+  labs(title = "Comparing Gas Costs in Region of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p17 = ggplot(green, aes(x = as.factor(green_rating), y = Electricity_Costs)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Electricity Costs") +
+  labs(title = "Comparing Electricity Costs in Region of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+p18 = ggplot(green, aes(x = as.factor(green_rating), y = cluster_rent)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Cluster Rent") +
+  labs(title = "Comparing Cluster Rent of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+plot_grid(p1, p6, p7, p11, p8, p9, p12, p13, nrow = 2, label_size = 2)
+```
+
+* Green Buildings tend to be **larger in size** and **younger in age** on average. 
+
+* Green Buildings are also **less likely to have been renovated** and **have more amenities.** 
+
+* Green Buildings are more likely to be **Class A** buildings, the highest quality properties, while Not Green Buildings are more likely to be the lower **Class B** buildings. 
+
+* Green Buildings more often situated in warmer climates that have **higher cooling degree days** and fewer **heating degree days.** 
+
+**So, is the increased Revenue Per Square Foot in Green buildings *really* due to their Green Rating?** Or, instead, is it because they are newer, larger, more desirable buildings that just happen to be green certified? To answer this question, we must "adjust" for these confounding variables in order to compare buildings where the *only difference* is a green certification. 
+
+Theoretically, to answer this developer's question about the economic impact of "going green," we'd like to have two identical 250,000 square foot buildings on East Cesar Chavez: one Green Rated and one Not Green Rated. Only then could we assess whether the 5% expected premium for green certification would hold true. However, we can't do this in East Austin. Instead, we *can* **match our data in order to balance the green and non-green building groups.** 
+
+The goal of our analysis is to adjust for those 8 confounding variables described above like age, size, and class. The matching process entails:
+
+* For each green building, finding a non-green building that is very similar in confounding variables. For example, they have similar ages, stories, and amenities. 
+
+* Pairing the data up into a new dataset so each green building has a “matched” non-green building. 
+
+The output below shows the summary of the matched and unmatched datasets. 
+
+```{r 1.1.b, echo = FALSE, warning = FALSE, message = FALSE}
+library(MatchIt)
+set.seed(1234)
+green_cl = green[complete.cases(green), ]
+set.seed(1234)
+mymatch = matchit(green_rating ~ size + age + class_a + class_b + renovated + amenities +
+                    cd_total_07 + hd_total07, data = green_cl)
+summary(mymatch)
+green_matched = match.data(mymatch)
+a1 = ggplot(green_matched, aes(x = as.factor(green_rating), y = size)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Size") +
+  labs(title = "Size") +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a2 = ggplot(green_matched, aes(x = as.factor(green_rating), y = empl_gr)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Employment Growth Rate") +
+  labs(title = "Comparing Employment Growth Rate of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a3 = ggplot(green_matched, aes(x = as.factor(green_rating), y = Rent)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Rent") +
+  labs(title = "Comparing Rent of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a4 = ggplot(green_matched, aes(x = as.factor(green_rating), y = leasing_rate)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Leasing Rate") +
+  labs(title = "Comparing Leasing Rate of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a5 = ggplot(green_matched, aes(x = as.factor(green_rating), y = stories)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Stories") +
+  labs(title = "Comparing Stories of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a6 = ggplot(green_matched, aes(x = as.factor(green_rating), y = age)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Age") +
+  labs(title = "Age") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a7 = ggplot(green_matched, aes(x = as.factor(green_rating), y = renovated)) + 
+  geom_boxplot() + 
+  xlab("Renovated") +
+  labs(title = "Renovations") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a8 = ggplot(green_matched, aes(x = as.factor(green_rating), y = class_a)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Class A") +
+  labs(title = "Class A") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a9 = ggplot(green_matched, aes(x = as.factor(green_rating), y = class_b)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Class B") +
+  labs(title = "Class B") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a10 = ggplot(green_matched, aes(x = as.factor(green_rating), y = net)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Net") +
+  labs(title = "Comparing Net Contract Basis of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a11 = ggplot(green_matched, aes(x = as.factor(green_rating), y = amenities)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Amenities") +
+  labs(title = "Amenities") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a12 = ggplot(green_matched, aes(x = as.factor(green_rating), y = cd_total_07)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Cooling Degree Days") +
+  labs(title = "Cooling DD") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a13 = ggplot(green_matched, aes(x = as.factor(green_rating), y = hd_total07)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Heating Degree Days") +
+  labs(title = "Heating DD") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a14 = ggplot(green_matched, aes(x = as.factor(green_rating), y = total_dd_07)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Total Degree Days") +
+  labs(title = "Total DD") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a15 = ggplot(green_matched, aes(x = as.factor(green_rating), y = Precipitation)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Precipitation") +
+  labs(title = "Precipiation") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a16 = ggplot(green_matched, aes(x = as.factor(green_rating), y = Gas_Costs)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Gas Costs") +
+  labs(title = "Comparing Gas Costs in Region of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a17 = ggplot(green_matched, aes(x = as.factor(green_rating), y = Electricity_Costs)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Electricity Costs") +
+  labs(title = "Comparing Electricity Costs in Region of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+a18 = ggplot(green_matched, aes(x = as.factor(green_rating), y = cluster_rent)) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Cluster Rent") +
+  labs(title = "Comparing Cluster Rent of Not Green versus Green Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red") 
+```
+
+The graphs below represent the compared boxplots of the data *before* matching and the data *after* matching. Each left graph is before matching, and each graph on the right shows the difference in the matched data. There is now much smaller difference in confounding variables. 
+
+```{r 1.1.c, echo = FALSE, warning = FALSE, message = FALSE}
+plot_grid(p1,a1, p6,a6, p7,a7, p11,a11, nrow = 2, label_size = 2, scale = 1)
+plot_grid(p8,a8, p9,a9, p12,a12, p13,a13, nrow = 2, label_size = 2, scale = 1)
+set.seed(1234)
+#mean(RevPSF ~ green_rating, data= green_matched)
+ggplot(green_matched, aes(x = as.factor(green_rating), y = RevPSF), fill = green_rating) + 
+  geom_boxplot() + 
+  xlab("Green Rating") + 
+  ylab("Revenue per Square Foot") +
+  labs(title = "Comparing Revenue per Square Foot of Matched Buildings") +
+  scale_x_discrete(labels = c("Not Green", "Green")) +
+  coord_flip() +
+  stat_summary(aes(label=round(..y..,2)), fun.y = "mean", geom = "point", shape = 8, size = 2, color = "red")
+```
+
+Balancing the data allows me to compare like with like. This eliminates the effect of the confounding variables because now the confounders are equal between the two different groups. It is now reasonable to compare the Revenue per Square Foot of Green and Non-Green buildings and make a conclusion about the impact of green rating because green rating is the only thing that is different between the two groups. 
+
+This is a better approach because we know that green rating is the only variable that is impacting differences in revenue per square foot. In the first situation, the differences in groups could have been caused by a number of confounding variables. 
+
+**Now that we've adjusted for confounding variables, the differences in mean revenue in the matched groups are smaller.** The mean revenue per square foot of the **non-green  matched buildings is \$26.24**, while the **mean of the green buildings is \$26.97**, resulting in a difference of **$0.73** per square foot. This is much smaller than original estimate of \$2.60 increased revenue per square foot. This would translate into an additional 250,000 * 0.73 = \$182,500 of extra revenue per year. If the expected baseline construction costs are \$100 million, with an expected 5% premium for green certification, that means we should expect to spend an extra \$5 million on the green building. It would take 5,000,000/182,500 = 27.4 years to recuperate the costs, without accounting for the time value of money. **This does not seem like a good financial move to build the green building; it is much riskier than the original estimate.**
+
+**Next, we need to estimate how "stable" our estimate of $0.77 increased revenue per square foot of a green building is.** We ran a bootstrapped linear model to understand how the coefficient for **green rating** changes as we resample with replacement. The histogram of these coefficients is shown below, and the 95% confidence interval for the coefficient for green rating is -\$1.18 to +\$1.91 with a mean of \$0.46 per square foot. 
+
+```{r 1.b.1, echo=FALSE, warning = FALSE, message = FALSE}
+set.seed(1234)
+boot_lm = do(2500)*{
+  lm_boot = lm(RevPSF ~ green_rating + size + age + class_a + class_b + renovated + amenities +
+                    cd_total_07 + hd_total07, data = resample(green_matched))
+}
+hist(boot_lm$green_rating, main = "Impact of Green Rating on Revenue per Square Foot", xlab = "Green Rating Coefficient")
+```
+
+From the bootstrapped regression, our estimate for the coefficient of green rating falls again, and we are not sure that it is greater than 0, as 0 is included in the confidence interval. This shows that there's **no significant difference** in rental revenue between green and not-green buildings, and the green construction certification is not a profitable investment. 
+
+The upper 95% confidence interval is \$1.91 Revenue per Square Foot. Assuming a lift at the 95% coefficient level, 6% discount rate, and 90% leasing rate for the next 30 years, the NPV of this investment is \$915,436.
+
+Assuming the mean coefficient of \$0.46, 6% discount rate, and 90% leasing rate for the next 30 years, the **NPV of this investment is -\$3,575,340.** This negative NPV shows that this is not a profitable investment, and **the \$5,000,000 could be better spent on more development space or amenities that may be more likely to increase revenue per square foot.** 
+
+```{r 1.b.2, echo=FALSE, warning = FALSE, message = FALSE}
+library(FinancialMath)
+cf = c(rep(1.91*250000*.9,30))
+years = c(1:30)
+#NPV(-5000000,cf,times =years,i=0.06)
+cf = c(rep(0.46*250000*.9,30))
+years = c(1:30)
+#NPV(-5000000,cf,times =years,i=0.06)
+```
+
+
+## Visual story telling part 2: flights at ABIA
+
+The most frustrating part of travel is delays. Whether they're due to a late arriving plane, a weather delay, or a mechanical issue with the plane, no traveler likes to wait to board their plane and get to their destination. Not only do plane delays frustrate travelers, they represent extreme costs for both the airport and the airlines who rely on on-time schedules. 
+
+So, where were the most common flight delays at ABIA in 2008? What's the relationship between the frequency of a flight route and its average delays? What are the most common causes of delay? Analyzing delay data will enable ABIA and airlines to better anticipate delays and change flight paths or schedules to account for frequent delays. 
+
+First, it's important to consider what are the most common flight paths through Austin. This allows us to scale the delay data by the frequency of each flight. 
+
+### Most Common Flight Routes Passing through Austin-Bergstrom International Airport, 2008
+
+*The width and opaqueness of the lines increase by the frequency of the flight path. The most frequent routes are represented by the green color, at about 5000 flights per year or ~15 flights per day. The least frequent flights are shown in yellow, less than 1000 flights per year, or less than 3 flights per day.*
+
+```{r 2.1, echo=FALSE, warning = FALSE, message = FALSE}
+library(ggplot2)
+library(maps)
+library(rgeos)
+library(maptools)
+library(ggmap)
+library(geosphere)
+library(plyr)
+file <- "https://raw.githubusercontent.com/jgscott/STA380/master/data/ABIA.csv"
+abia <- read_csv(file)
+file <- "https://raw.githubusercontent.com/jpatokal/openflights/master/data/airports.dat"
+airports <- read_csv(file)
+abia <- abia[,c(-11,-23)]
+abia[is.na(abia)] <- 0
+abia$OriginLat <-with(airports, `-6.081689834590001`[match(abia$Origin, GKA)])
+abia$OriginLong <- with(airports, `145.391998291`[match(abia$Origin, GKA)])
+abia$DestLat <-with(airports, `-6.081689834590001`[match(abia$Dest, GKA)])
+abia$DestLong <- with(airports, `145.391998291`[match(abia$Dest, GKA)])
+library(dplyr)
+library(tidyr)     
+grouped = abia %>% group_by(Origin, Dest) %>% 
+       dplyr::summarise(Origin = Origin,
+                 Dest = Dest,
+                 Count = n(),
+                 Carrier = names(which.max(table(UniqueCarrier))),
+                 OriginLat =(OriginLat),
+                 OriginLong = (OriginLong),
+                 DestLat = (DestLat),
+                 DestLong = (DestLong),
+                 AvgDepDelay = mean(DepDelay),
+                 AvgArrDelay = mean(ArrDelay),
+                 AvgCarrDelay = mean(CarrierDelay),
+                 AvgWeatherDelay = mean(WeatherDelay),
+                 AvgNASDelay = mean(NASDelay),
+                 AvgSecurityDelay = mean(SecurityDelay),
+                 AvgLateAirDelay = mean(LateAircraftDelay))
+       
+grouped = unique(grouped)
+fortify.SpatialLinesDataFrame = function(model, data, ...){
+ldply(model@lines, fortify)
+}
+ 
+ 
+# calculate routes for each row
+routes = gcIntermediate(grouped[,c('OriginLong', 'OriginLat')], grouped[,c('DestLong', 'DestLat')], 200, breakAtDateLine = FALSE, addStartEnd = TRUE, sp=TRUE)
+# fortify to dataframe
+fortifiedroutes = fortify.SpatialLinesDataFrame(routes)
+ 
+# merge to form great circles
+routes_count = data.frame('count'=grouped$Count, 'id'=1:nrow(grouped), 'Origin'=grouped$Origin, 
+                          "DepDelay" = grouped$AvgDepDelay,
+                          "ArrDelay" = grouped$AvgArrDelay,
+                          "CarrDelay" = grouped$AvgCarrDelay,
+                          "WeatherDelay" = grouped$AvgWeatherDelay,
+                          "NASDelay" = grouped$AvgNASDelay,
+                          "SecurityDelay" = grouped$AvgSecurityDelay,
+                          "LateAirDelay" = grouped$AvgLateAirDelay,
+                          "Airline" = grouped$Carrier)
+greatcircles = merge(fortifiedroutes, routes_count, all.x=T, by='id')
+ 
+# get worldmap
+worldmap = map_data("world")
+ 
+# wrld layer
+wrld<-c(geom_polygon(aes(long,lat,group=group), size = 0.1, colour= "#090D2A",
+fill="#090D2A", alpha=0.8, data=worldmap))
+# urban layer
+urbanareasin <- readShapePoly("C:/Users/Katherine Bigunac/Documents/GitHub/STA380/ne_10m_urban_areas.shp")
+urb <- c(geom_polygon(aes(long, lat, group = group),
+size = 0.3,
+color = "#ffffff",
+fill = "#ffffff",
+alpha = 0.8,
+data = urbanareasin))
+greatcircles <- greatcircles[order(-greatcircles$count),]
+# final combine
+ggplot() +
+wrld +
+urb +
+geom_line(aes(long,lat,group=id, size=count, alpha = count, color = count), data= greatcircles) +
+theme(panel.background = element_rect(fill='#00001C',colour='#00001C'), panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+theme(legend.position = c(0,0.4),
+legend.justification = c(0,1),
+legend.background = element_rect(colour = NA, fill = NA),
+legend.key = element_rect(colour = NA, fill = NA, size = 10),
+legend.text = element_text(colour='white', size = 10)) +
+scale_x_continuous(limits = c(-125,-70)) +
+scale_y_continuous(limits = c(20,50)) + 
+scale_colour_gradient(low="#FFC966", high = "#7FFFD4") +
+#guides(fill = guide_legend(keywidth = 20, keyheight = 20)) +
+annotate("text",x=max(worldmap$long),y=-60,hjust=.9,size=6,
+label=paste("Flight routes from top 8 countries","Created by Your name","Data From OpenFlights.org", sep="\n"),color="white")
+```
+
+The most frequent flight routes are to Dallas and Houston. Other notable frequent routes shown on the map are Phoenix, Denver, Chicago, and Atlanta. 
+
+From intuition, frequent flight routes should have fewer average delays than less frequently flown routes. Next, we'll dive into the mapping of most frequent flight delays on ABIA flights. 
+
+### Most Common Flight Departure Delays from ABIA
+
+*The width of the lines increase by the frequency of the flight path. The routes with the most delays are more opaque and represented by the green color, while the routes with the fewest delays are represented by yellow color*
+
+```{r 2.2, echo=FALSE, warning = FALSE, message = FALSE}
+#delays
+ggplot() +
+wrld +
+urb +
+geom_line(aes(long,lat,group=id, color=DepDelay, alpha = DepDelay, size = count), data= greatcircles) +
+theme(panel.background = element_rect(fill='#00001C',colour='#00001C'), panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+theme(legend.position = c(0,0.4),
+legend.justification = c(0,1),
+legend.background = element_rect(colour = NA, fill = NA),
+legend.key = element_rect(colour = NA, fill = NA, size = 10),
+legend.text = element_text(colour='white', size = 10)) +
+scale_x_continuous(limits = c(-125,-70)) +
+scale_y_continuous(limits = c(20,50)) + 
+scale_colour_gradient(low="#FFC966", high = "#7FFFD4") +
+#guides(fill = guide_legend(keywidth = 20, keyheight = 20)) +
+annotate("text",x=max(worldmap$long),y=-60,hjust=.9,size=6,
+label=paste("Flight routes from top 8 countries","Created by Your name","Data From OpenFlights.org", sep="\n"),color="white")
+```
+
+This graph is quite good for visualizing aggregate average departure delays, showing only high green color (average delays >60 minutes) for routes to Des Moines, Iowa and Nashville, Tennessee. However, this graph doesn't tell us much more than that, so we'll have to filter out some of the noise. 
+
+So what if we just filter the routes with very small average delays?
+
+### Routes with Average Delays <5 minutes from ABIA, 2008
+
+*The width of the lines increase by the frequency of the flight path. The routes with the most delays are more opaque and represented by the green color, while the routes with the fewest delays are represented by yellow color*
+
+```{r 2.3, echo=FALSE, warning = FALSE, message = FALSE}
+delayed <- filter(greatcircles, greatcircles$DepDelay < 5)
+ggplot() +
+wrld +
+urb +
+geom_line(aes(long,lat,group=id, color=DepDelay, alpha = DepDelay, size = count), data= delayed) +
+theme(panel.background = element_rect(fill='#00001C',colour='#00001C'), panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+theme(legend.position = c(0,0.4),
+legend.justification = c(0,1),
+legend.background = element_rect(colour = NA, fill = NA),
+legend.key = element_rect(colour = NA, fill = NA, size = 10),
+legend.text = element_text(colour='white', size = 10)) +
+scale_x_continuous(limits = c(-125,-70)) +
+scale_y_continuous(limits = c(20,50)) + 
+scale_colour_gradient(low="#FFC966", high = "#7FFFD4") +
+#guides(fill = guide_legend(keywidth = 20, keyheight = 20)) +
+annotate("text",x=max(worldmap$long),y=-60,hjust=.9,size=6,
+label=paste("Flight routes from top 8 countries","Created by Your name","Data From OpenFlights.org", sep="\n"),color="white")
+```
+
+The rotues with the **shortest average delays** are to every West-Coast hub (Los Angeles, San Francisco, Seattle), and also include short routes in the southern half of the United States.
+
+Next, we'll examine the routes with medium average delays, between 5 and 30 minutes on average. 
+
+### Routes with Average Delays Between >5 and < 20 minutes from ABIA, 2008
+
+*The width of the lines increase by the frequency of the flight path. The routes with the most delays are more opaque and represented by the green color, while the routes with the fewest delays are represented by yellow color*
+
+```{r 2.4, echo=FALSE, warning = FALSE, message = FALSE}
+delayed <- filter(greatcircles, greatcircles$DepDelay > 5 & greatcircles$DepDelay < 20)
+ggplot() +
+wrld +
+urb +
+geom_line(aes(long,lat,group=id, color=DepDelay, alpha = DepDelay, size = count), data= delayed) +
+theme(panel.background = element_rect(fill='#00001C',colour='#00001C'), panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+theme(legend.position = c(0,0.4),
+legend.justification = c(0,1),
+legend.background = element_rect(colour = NA, fill = NA),
+legend.key = element_rect(colour = NA, fill = NA, size = 10),
+legend.text = element_text(colour='white', size = 10)) +
+scale_x_continuous(limits = c(-125,-70)) +
+scale_y_continuous(limits = c(20,50)) + 
+scale_colour_gradient(low="#FFC966", high = "#7FFFD4") +
+#guides(fill = guide_legend(keywidth = 20, keyheight = 20)) +
+annotate("text",x=max(worldmap$long),y=-60,hjust=.9,size=6,
+label=paste("Flight routes from top 8 countries","Created by Your name","Data From OpenFlights.org", sep="\n"),color="white")
+```
+
+Our routes with medium delays expand to our east-coast hubs, that all tend to have higher average delays than the west-coast hubs. Namely, flights to Chicago, Illinois, Atlanta, Georgia, and New York City tend to have higher average delays closer to 20 minutes. 
+
+**So what are the routes with the most room for improvement?**
+
+### Routes with Average Delays > 20 minutes from ABIA, 2008
+
+*The width of the lines increase by the frequency of the flight path. The routes with the most delays are more opaque and represented by the green color, while the routes with the fewest delays are represented by yellow color*
+
+```{r 2.5, echo=FALSE, warning = FALSE, message = FALSE}
+delayed <- filter(greatcircles, greatcircles$DepDelay > 20)
+ggplot() +
+wrld +
+urb +
+geom_line(aes(long,lat,group=id, size = count,color=DepDelay, alpha = DepDelay), data= delayed) +
+theme(panel.background = element_rect(fill='#00001C',colour='#00001C'), panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+#theme(legend.position = c(0,0.4),
+#legend.justification = c(0,1),
+#legend.background = element_rect(colour = NA, fill = NA),
+#legend.key = element_rect(colour = NA, fill = NA, size = 10),
+#legend.text = element_text(colour='white', size = 10)) +
+scale_x_continuous(limits = c(-125,-70)) +
+scale_y_continuous(limits = c(20,50)) + 
+scale_colour_gradient(low="#FFC966", high = "#7FFFD4") +
+#guides(fill = guide_legend(keywidth = 20, keyheight = 20)) +
+annotate("text",x=max(worldmap$long),y=-60,hjust=.9,size=6,
+label=paste("Flight routes from top 8 countries","Created by Your name","Data From OpenFlights.org", sep="\n"),color="white")
+```
+
+From this chart, we see two **frequently flown routes** with **highest room for improvement.** We checked which routes these were by going into the data table and viewing the two most frequently flown routes with delays >20 minutes. 
+
+* A Mesa Airlines (American Airlines operated) route from IAD to AUS, flown 631 times in 2008, with an average delay of 27 minutes.
+
+* A Southwest Airlines route from BNA to AUS, flown 795 times in 2008, with an average delay of 20 minutes. 
+
+The types of delays on these routes are shown below. 
+
+```{r 2.6, echo=FALSE, warning = FALSE, message = FALSE}
+improve <- delayed[c(1,213),]
+improve <- improve[,c(8:15)]
+improve <- t(improve[,c(-1:-3)])
+improve <- setNames(improve, c("BNA", "IAD"))
+barplot(improve, legend = TRUE, names = c("BNA-AUS Southwest", "IAD-AUS Mesa"),args.legend = list(x = "topleft", bty="n", xpd = FALSE), main = "Types of Delays at Most Frequently Delayed ABIA Routes")
+```
+
+The Southwest Nashville flight is most often delayed due to Late Aircraft Delays. The Mesa Washington DC flight is most often delayed due to Carrier Delays. **So, what can these airlines do with this information?**
+
+* Southwest Airlines should analyze the aircrafts coming into Nashville that are used on this Nashville-Austin flight. It may be necessary to have more time scheduled in between the flight paths in Nashville because the incoming flight is often delayed. Because the Arrival Delay on this flight is still 13 minutes, the planes are not "making up" the delay in the air. This speaks to the need to **revisit the timing of this scheduled BNA-AUS route.**
+
+* Mesa/American Airlines should dive into its historical data for this route that is consistently having Carrier Delays of nearly 20 minutes. This IAD-AUS route is also not "making up" its delay in the air, as the average arrival delay is also 27 minutes. These delays may be caused by a crew that takes longer to load passengers, the use of an older aircraft with more mechanical issues, or a slower baggage loading or fueling crew in Washington DC. With more information about the **breakdown of carrier delays,** Mesa will be able to improve its route with the maximum number of delays and reduce impact on ABIA delays. 
+
+## Portfolio Modeling
+
+We are building three different ETF-based portfolios, each based on a different investment risk strategy. These three portfolios each are built on different ideas of tracking market movement. For each portfolio, we'll use the last five years of daily data to calculate the 5% value at risk using 20 trading day bootstrap resampling on a \$100,000 capital investment. Each of these portfolios is redistributed at the end of the day to maintain the stated portfolio weights. 
+
+### Portfolio 1: "In it for the long run"
+
+Portfolio 1 is built on the idea of tracking the S&P 500 movement. These ETFs are indicators of the entire market trends. Here's a breakdown of the portfolio:
+
+* **20% VOO** Vanguard 500 Index Fund, built to track the S&P 500
+
+* **20% VTWO** Vanguard Russell 2000 ETF, the next 2,000 diversified stocks after excluding the largest US public companies
+
+* **20% MGC** Vanguard Mega Cap ETF, diversified large blend domestic ETF
+
+* **20% SPYG** SPDR Portfolio S&P 500 Growth ETF, high growth large cap companies 
+
+* **20% VTI** Vanguard Total Stock Market ETF, built to track S&P 500, but more mid-cap exposure than VOO
+
+```{r 3.1, echo=FALSE, warning = FALSE, message = FALSE}
+library(mosaic)
+library(quantmod)
+mystocks = c("VOO", "VTWO", "MGC", "SPYG", "VTI")
+myprices = getSymbols(mystocks, from = "2015-08-10")
+# A chunk of code for adjusting all stocks
+# creates a new object addind 'a' to the end
+# For example, WMT becomes WMTa, etc
+for(ticker in mystocks) {
+	expr = paste0(ticker, "a = adjustOHLC(", ticker, ")")
+	eval(parse(text=expr))
+}
+# Combine all the returns in a matrix
+all_returns = cbind(	ClCl(VOOa),
+								ClCl(VTWOa),
+								ClCl(MGCa),
+								ClCl(SPYGa),
+								ClCl(VTIa))
+#head(all_returns)
+all_returns = as.matrix(na.omit(all_returns))
+# Compute the returns from the closing prices
+pairs(all_returns)
+```
+
+From the pairs correlation matrix above, you can see that the Close-to-Close earnings of each of these ETFs are highly correlated. Thus, when one goes up, the others also go up. When one goes down, they all go down. This is evidence that all of these ETFs are tracking market movement and largely moving in the same direction. 
+
+Then, we simulate the 20-day trading period of this portfolio. 
+
+```{r 3.1.a, echo=FALSE, warning = FALSE, message = FALSE}
+# Sample a random return from the empirical joint distribution
+# This simulates a random day
+return.today = resample(all_returns, 1, orig.ids=FALSE)
+# Update the value of your holdings
+# Assumes an equal allocation to each asset
+total_wealth = 100000
+my_weights = c(0.2,0.2,0.2, 0.2, 0.2)
+holdings = total_wealth*my_weights
+holdings = holdings*(1 + return.today)
+set.seed(1)
+# Now simulate many different possible scenarios  
+initial_wealth = 100000
+sim1 = do(1000)*{
+	total_wealth = initial_wealth
+	weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
+	holdings = weights * total_wealth
+	n_days = 20
+	wealthtracker = rep(0, n_days)
+	for(today in 1:n_days) {
+		return.today = resample(all_returns, 1, orig.ids=FALSE)
+		holdings = holdings + holdings*return.today
+		total_wealth = sum(holdings)
+		wealthtracker[today] = total_wealth
+	}
+	wealthtracker
+}
+#head(sim1)
+hist(sim1[,n_days], 25, main = "Portfolio 1 Bootstrapped Portfolio Values")
+# Profit/loss
+#mean(sim1[,n_days])
+hist(sim1[,n_days]- initial_wealth, breaks=30, main = "Portfolio 1 Bootstrapped Earnings")
+abline(v = (quantile(sim1[,n_days], 0.05) - initial_wealth), col = "red")
+# Calculate 5% value at risk
+quantile(sim1[,n_days], 0.05) - initial_wealth
+```
+
+From the histograms of the portfolio values and earnings, we see that negative earnings are a possibility. The 5% value at risk based on a 20-day bootstrapped period is **-\$8155.05** for this portfolio. 
+
+### Portfolio 2: "Thrive on Volatility" 
+
+Portfolio 2 is built on the idea of thriving off market volatility. These ETFs are designed to thrive in volatile market conditions by increasing their diversity. Here's a breakdown of the portfolio:
+
+* **25% QQQ** Invesco QQQ Trust, tracks the Nasdaq 100 index, dominated by big tech names
+
+* **25% BTAL** AGFiQ U.S. Market Neutral Anti-Beta Fund, profiting off a spread between high and low beta stocks, performing well when low beta stocks are in favor in stormy market conditions
+
+* **25% SDY** SPDR S&P Dividend ETF, focusing on dividend growth stocks. Dividends represent a safer return as firms will reduce buybacks before cutting dividends. 
+
+* **25% XLP** SPDR Consumer Staples Select Sector, tracks consumer household stable products like Walmart and Proctor and Gamble that will not fall significantly during volatile markets
+
+```{r 3.2, echo=FALSE, warning = FALSE, message = FALSE}
+mystocks = c("QQQ", "BTAL", "SDY", "XLP")
+myprices = getSymbols(mystocks, from = "2015-08-10")
+# A chunk of code for adjusting all stocks
+# creates a new object addind 'a' to the end
+# For example, WMT becomes WMTa, etc
+for(ticker in mystocks) {
+	expr = paste0(ticker, "a = adjustOHLC(", ticker, ")")
+	eval(parse(text=expr))
+}
+# Combine all the returns in a matrix
+all_returns = cbind(	ClCl(QQQa),
+								ClCl(BTALa),
+								ClCl(SDYa),
+								ClCl(XLPa))
+#head(all_returns)
+all_returns = as.matrix(na.omit(all_returns))
+# Compute the returns from the closing prices
+pairs(all_returns)
+```
+
+From the pairs plot, we see that these four ETFs are much less strongly correlated than the ETFs in Portfolio 1. Thus, I expect this portfolio to be "safer" and have a higher Value at Risk. 
+
+Then, we simulate the 20-day trading period of this portfolio. 
+
+```{r 3.2.a, echo=FALSE, warning = FALSE, message = FALSE}
+# Sample a random return from the empirical joint distribution
+# This simulates a random day
+return.today = resample(all_returns, 1, orig.ids=FALSE)
+# Update the value of your holdings
+# Assumes an equal allocation to each asset
+total_wealth = 100000
+my_weights = c(0.25,0.25,0.25,0.25)
+holdings = total_wealth*my_weights
+holdings = holdings*(1 + return.today)
+set.seed(1)
+# Now simulate many different possible scenarios  
+initial_wealth = 100000
+sim1 = do(1000)*{
+	total_wealth = initial_wealth
+	weights = c(0.25,0.25,0.25,0.25)
+	holdings = weights * total_wealth
+	n_days = 20
+	wealthtracker = rep(0, n_days)
+	for(today in 1:n_days) {
+		return.today = resample(all_returns, 1, orig.ids=FALSE)
+		holdings = holdings + holdings*return.today
+		total_wealth = sum(holdings)
+		wealthtracker[today] = total_wealth
+	}
+	wealthtracker
+}
+#head(sim1)
+hist(sim1[,n_days], 25, main = "Portfolio 2 Bootstrapped Portfolio Values")
+# Profit/loss
+#mean(sim1[,n_days])
+hist(sim1[,n_days]- initial_wealth, breaks=30, main = "Portfolio 2 Bootstrapped Earnings")
+abline(v = (quantile(sim1[,n_days], 0.05) - initial_wealth), col = "red")
+# Calculate 5% value at risk
+quantile(sim1[,n_days], 0.05) - initial_wealth
+```
+
+From the histograms of the portfolio values and earnings, we see that negative earnings are a possibility. The 5% value at risk based on a 20-day bootstrapped period is **-\$5,047.68** for this portfolio. This is a much "safer" portfolio compared to the portfolio that simply tracks the S&P 500 above.  
+
+### Portfolio 3: "Safety and Risk-Aversion with Bonds" 
+
+While Portfolio 2 was built on the idea of thriving off market volatility, Portfolio 3 attempts to avoid market volatility altogether. These "safe" ETFs are designed to withstand market volatility, but have a smaller potential return. Here's a breakdown of the portfolio:
+
+* **33% FBND** Fidelity Total Bond ETF, tracks Barclays US Universal Bond Index with diversified sector allocation
+
+* **33% BLV** Vanguard Long-Term Bond, tracks US government and corporate bonds that have maturities of greater than 10 years
+
+* **33% BSV** Vanguard Short-Term Bond, built 71% off AAA-rated bonds and 13% in bonds rated BBB.   
+
+```{r 3.3, echo=FALSE, warning = FALSE, message = FALSE}
+mystocks = c("FBND", "BLV", "BSV")
+myprices = getSymbols(mystocks, from = "2015-08-10")
+# A chunk of code for adjusting all stocks
+# creates a new object addind 'a' to the end
+# For example, WMT becomes WMTa, etc
+for(ticker in mystocks) {
+	expr = paste0(ticker, "a = adjustOHLC(", ticker, ")")
+	eval(parse(text=expr))
+}
+# Combine all the returns in a matrix
+all_returns = cbind(ClCl(FBNDa),
+								ClCl(BLVa),
+								ClCl(BSVa))
+#head(all_returns)
+all_returns = as.matrix(na.omit(all_returns))
+# Compute the returns from the closing prices
+pairs(all_returns)
+```
+
+From the pairs correlation matrix, we see that these Bond ETFs are less correlated than the ETFs in Portfolio 1 and Portfolio 2. 
+
+Then, we simulate the 20-day trading period of this portfolio.
+
+```{r 3.3.a, echo=FALSE, warning = FALSE, message = FALSE}
+# Sample a random return from the empirical joint distribution
+# This simulates a random day
+return.today = resample(all_returns, 1, orig.ids=FALSE)
+# Update the value of your holdings
+# Assumes an equal allocation to each asset
+total_wealth = 100000
+my_weights = c((1/3),(1/3),(1/3))
+holdings = total_wealth*my_weights
+holdings = holdings*(1 + return.today)
+set.seed(1)
+# Now simulate many different possible scenarios  
+initial_wealth = 100000
+sim1 = do(1000)*{
+	total_wealth = initial_wealth
+	weights = c((1/3),(1/3),(1/3))
+	holdings = weights * total_wealth
+	n_days = 20
+	wealthtracker = rep(0, n_days)
+	for(today in 1:n_days) {
+		return.today = resample(all_returns, 1, orig.ids=FALSE)
+		holdings = holdings + holdings*return.today
+		total_wealth = sum(holdings)
+		wealthtracker[today] = total_wealth
+	}
+	wealthtracker
+}
+#head(sim1)
+hist(sim1[,n_days], 25, main = "Portfolio 3 Bootstrapped Portfolio Values")
+# Profit/loss
+#mean(sim1[,n_days])
+hist(sim1[,n_days]- initial_wealth, breaks=30, main = "Portfolio 3 Bootstrapped Earnings")
+abline(v = (quantile(sim1[,n_days], 0.05) - initial_wealth), col = "red")
+# Calculate 5% value at risk
+quantile(sim1[,n_days], 0.05) - initial_wealth
+```
+From the histograms of the portfolio values and earnings, we see that negative earnings are **still** a possibility. The 5% value at risk based on a 20-day bootstrapped period is **-\$2,553.16** for this portfolio. This is a much "safer" portfolio compared to **both** Portfolio 1 and Portfolio 2. 
+
+### In summary
+
+* Portfolio 1 is best suited for longer-term investment. (In fact, some of these ETFs are in our team's own IRA portfolios.) The 5% VaR is the lowest at **-\$8155.05**
+
+* Portfolio 2 is a better short-term risk fund. Instead of simply tracking the market, it attempts to hedge against market volatility in other ways. These strategies include focusing on high-value tech firms, dividend funds, consumer staples, and low beta stocks. It increases VaR to **-\$5,047.68**. 
+
+* Portfolio 3 is the best short-term risk fund as it increases VaR further to **-\$2,553.16**. Because it is based on more stable bond indexes, this means that the Value at Risk is higher than the previous two portfolios.
+
+For those most risk-averse investors over a 20-day trading period, Portfolio 3 is the safest choice. Over a longer trading period, investors may be more likely to choose the portfolios that track the S&P 500 or thrive off market volatility in the long run. 
+
+
+## Market segmentation
+
+```{r 4.1, echo=FALSE, warning = FALSE, message = FALSE}
+# clustering
+# principal component analysis
+library(ggplot2)
+library(LICORS)  # for kmeans++
+library(foreach)
+library(mosaic)
+library(tidyverse)
+
+twitter <- read_csv("./data/social_marketing.csv")
+summary(twitter)
+head(twitter)
+# Center and scale the data
+X = twitter[ ,-(1)]
+X = scale(X)
+mu = apply(X,2,mean)
+sigma = apply(X,2,sd)
+# Run k-means with 6 clusters and 25 starts
+clust1 = kmeans(X, 6, nstart=25)
+
+
+# What are the clusters?
+clust1$center  # not super helpful
+clust1$center[1,]*sigma + mu #politics, news, travel
+clust1$center[2,]*sigma + mu #colleges, online gaming
+clust1$center[3,]*sigma + mu #religion, food, sports_fandom, parenting
+clust1$center[4,]*sigma + mu # ? 
+clust1$center[5,]*sigma + mu #photo_sharing, fashion, cooking, beauty
+clust1$center[6,]*sigma + mu #health_nutrition, personal_fitness
+# A few plots with cluster membership shown
+# qplot is in the ggplot2 library
+qplot(religion, sports_fandom, data=twitter, color=factor(clust1$cluster))
+qplot(politics, news, data=twitter, color=factor(clust1$cluster))
+# Using kmeans++ initialization
+clust2 = kmeanspp(X, k=6, nstart=25)
+clust2$center[1,]*sigma + mu #health_nutrition, personal_fitness, cooking
+clust2$center[2,]*sigma + mu #college_uni, online_gaming
+clust2$center[3,]*sigma + mu #cooking, photo_sharing, fashion, beauty
+clust2$center[4,]*sigma + mu #religion, sports_fandom, parenting, food
+clust2$center[5,]*sigma + mu #photo_sharing
+clust2$center[6,]*sigma + mu #politics, travel, news
+qplot(religion, sports_fandom, data=twitter, color=factor(clust2$cluster))
+qplot(politics, news, data=twitter, color=factor(clust2$cluster))
+# Compare versus within-cluster average distances from the first run
+clust1$withinss
+clust2$withinss
+sum(clust1$withinss)
+sum(clust2$withinss)
+clust1$tot.withinss
+clust2$tot.withinss
+clust1$betweenss
+clust2$betweenss
+library(cluster)
+set.seed(123)
+twitter_gap <- clusGap(X, FUN = kmeans, nstart = 25,
+                    K.max = 15, B = 10)
+plot(twitter_gap)
+twitter_gap
+```
+
+## Author attribution
+
+In order to predict the author of an article on the basis of the article's textual content, we had to first build a training model to give a baseline dictionary to predict "new" testing articles. 
+
+First, we read in the 50 training articles for each of the 50 different authors.
+
+```{r 5.1.0, echo=FALSE, warning = FALSE, message = FALSE}
+library(tm) 
+library(tidyverse)
+library(slam)
+library(proxy)
+# reader function used in class
+readerPlain = function(fname){
+				readPlain(elem=list(content=readLines(fname)), 
+							id=fname, language='en') }
+```
+
+```{r 5.1.1, echo=FALSE, warning = FALSE, message = FALSE}
+# expand all file paths in training data
+train = Sys.glob('ReutersC50/C50train/*')
+# initiate empty lists to be used in for loop
+trainingArticles = NULL
+labels = NULL
+# read in all training articles
+for (name in train) {
+  author = substring(name, first=21) # set author name
+  #print(author)
+  article = Sys.glob(paste0(name,'/*.txt')) # expand articles for each name
+  trainingArticles = append(trainingArticles,article) # append articles to list
+  labels = append(labels, rep(author, length(article))) # append labels to list
+}
+# read all the plain text files in the list
+combined = lapply(trainingArticles,readerPlain)
+# set article names
+names(combined) = trainingArticles
+names(combined) = sub('.txt','',names(combined))
+# creates the corpus
+trainCorpus = Corpus(VectorSource(combined))
+```
+
+```{r 5.1.2, echo=FALSE, warning = FALSE, message = FALSE}
+## Some pre-processing/tokenization steps.
+## tm_map just maps some function to every document in the corpus
+trainArticles = trainCorpus %>%
+  tm_map(content_transformer(tolower))  %>%             # make everything lowercase
+  tm_map(content_transformer(removeNumbers)) %>%        # remove numbers
+  tm_map(content_transformer(removePunctuation)) %>%    # remove punctuation
+  tm_map(content_transformer(stripWhitespace))          # remove excess white-space
+DTM_train = DocumentTermMatrix(trainArticles)
+DTM_train
+trainArticles = tm_map(trainArticles, content_transformer(removeWords), stopwords("en"))
+DTM_train = DocumentTermMatrix(trainArticles)
+DTM_train
+DTM_train = removeSparseTerms(DTM_train, .99)
+DTM_train
+DTM_train = weightTfIdf(DTM_train)
+DTM_train <- as.matrix(DTM_train)
+```
+
+After reading in the data, we pre-processed the text in the articles. 
+
+* Converting all text to lowercase
+
+* Remove numbers
+
+* Remove punctuation
+
+* Remove excess white space
+
+After these four steps, we're down to **2500 documents** with **32,669 terms.** 
+
+* Remove stop and filler words, based on the "basic English" stop words
+
+After removing filler words, we're down to **32,570 terms.** 
+
+* Removed words that have count 0 in > 99% of documents
+
+Thus cuts the long tail significantly to only **3393 terms.**
+
+* Finally, we converted the raw counts of words in each document to TF-IDF weights.
+
+**Then, we replicated the same process to read in the 50 testing articles for the authors. There are 3448 terms in the testing data, compared to only 3393 terms in the training data.**
+
+```{r 5.2.1, echo=FALSE, warning = FALSE, message = FALSE}
+# expand all file paths in training data
+test = Sys.glob('ReutersC50/C50test/*')
+# initiate empty lists to be used in for loop
+testingArticles = NULL
+labels_test = NULL
+# read in all training articles
+for (name in test) {
+  author = substring(name, first=20) # set author name
+  article = Sys.glob(paste0(name,'/*.txt')) # expand articles for each name
+  testingArticles = append(testingArticles,article) # append articles to list
+  labels_test = append(labels_test, rep(author, length(article))) # append labels to list
+}
+# read all the plain text files in the list
+combined = lapply(testingArticles,readerPlain)
+# set article names
+names(combined) = testingArticles
+names(combined) = sub('.txt','',names(combined))
+# creates the corpus
+testCorpus = Corpus(VectorSource(combined))
+```
+
+```{r 5.2.2, echo=FALSE, warning = FALSE, message = FALSE}
+## Some pre-processing/tokenization steps.
+## tm_map just maps some function to every document in the corpus
+testArticles = testCorpus %>%
+  tm_map(content_transformer(tolower))  %>%             # make everything lowercase
+  tm_map(content_transformer(removeNumbers)) %>%        # remove numbers
+  tm_map(content_transformer(removePunctuation)) %>%    # remove punctuation
+  tm_map(content_transformer(stripWhitespace))          # remove excess white-space
+DTM_test = DocumentTermMatrix(testArticles)
+DTM_test
+testArticles = tm_map(testArticles, content_transformer(removeWords), stopwords("en"))
+DTM_test = DocumentTermMatrix(testArticles)
+DTM_test
+DTM_test = removeSparseTerms(DTM_test, .99)
+DTM_test
+DTM_test = weightTfIdf(DTM_test)
+DTM_test <- as.matrix(DTM_test)
+```
+
+
+**Now, we have to ensure the words in the training set are identical to the words in the testing set. We've chosen to ignore words that are in the testing set and not found in the training set. This removes the 55 "new" terms from the training data, less than 2% of the training terms. Now, both the training and testing groups have 3393 terms.** 
+
+```{r 5.3.0, echo=FALSE, warning = FALSE, message = FALSE}
+#forces test to take only identical col names as train
+DTM_test = DocumentTermMatrix(testArticles, list(dictionary=colnames(DTM_train)))
+DTM_test = weightTfIdf(DTM_test)
+DTM_test
+DTM_test <- as.matrix(DTM_test)
+```
+
+### At this point, we have a training set with 3393 predictors. In order to simplify our predictors, we perform a Principal Component Analysis (PCA) to reduce the number of predictors. 
+
+First, this requires us to eliminate columns that have 0 entries. This reduces us to eliminate columns where the term is not found in any data in the test or train set. Then, we ensure the term lists are identical by using only the intersecting columns of the train and test data, leaving us with 8,317,500 elements in both the train and test matrices. 
+
+```{r 5.4.0, echo=FALSE, warning = FALSE, message = FALSE}
+DTM_train <- DTM_train[,which(colSums(DTM_train) != 0)]
+DTM_test <- DTM_test[,which(colSums(DTM_test) != 0)]
+DTM_train = DTM_train[,intersect(colnames(DTM_test),colnames(DTM_train))]
+DTM_test = DTM_test[,intersect(colnames(DTM_test),colnames(DTM_train))]
+```
+
+Once the data is in the same format, we use PCA analysis to choose the number of principal components. 
+
+```{r 5.4.1, echo=FALSE, warning = FALSE, message = FALSE}
+pca = prcomp(DTM_train, scale =TRUE) #remember to scale the data
+predictions = predict(pca, newdata = DTM_test)
+plot(cumsum(pca$sdev^2/sum(pca$sdev^2)), ylab = 'Cumulative variance explained', xlab = 'Number of principal components', main = 'Summary of Principal Component Variance Analysis')
+#lets stop at 1000 principal components
+#reformat the data
+train = data.frame(pca$x[,1:1000])
+train['author']=labels
+train_load = pca$rotation[,1:1000]
+test <- scale(DTM_test) %*% train_load
+test <- as.data.frame(test)
+test['author']=labels_test
+```
+
+We've chosen to stop at 1000 principal components that explain ~80% of the variance. After these components were chosen, the data cleaning and pre-processing is complete and we are ready to run models to predict authors. 
+
+These were the four models we ran to predict author attribution:
+
+* KNN
+
+* Random Forest
+
+* Naive Bayes
+
+* Multinomial logistic regression
+
+### KNN
+
+We ran a KNN model with k = 1, as other larger values of k did not improve the testing or training accuracy. 
+
+```{r 5.5.1, echo=FALSE, warning = FALSE, message = FALSE}
+library(class)
+set.seed(1234)
+xtrain = subset(train, select = c(1:1000))
+ytrain = as.factor(train[,1001])
+xtest = subset(test, select = c(1:1000))
+ytest = as.numeric(factor(test[,1001]))
+knn = knn(xtrain, xtest, ytrain, k = 1)
+checkKNN = as.data.frame(cbind(knn,ytest))
+accuracy = ifelse(as.integer(knn)==as.integer(ytest),1,0)
+#sum(accuracy)
+sum(accuracy)/nrow(checkKNN)
+#32.6% accuracy
+```
+
+The KNN-model has only 32.6% accuracy on the testing set. 
+
+### Random Forest
+
+The random forest model was ran with the maximum number of tries equal to six. 
+
+```{r 5.5.2, echo=FALSE, warning = FALSE, message = FALSE}
+library(randomForest)
+set.seed(1234)
+mod_rand<-randomForest(as.factor(author)~.,data=train, mtry=6,importance=TRUE)
+pre_rand<-predict(mod_rand,data=test)
+tab_rand<-as.data.frame(table(pre_rand,as.factor(test$author)))
+predicted<-pre_rand
+actual<-as.factor(test$author)
+temp<-as.data.frame(cbind(actual,predicted))
+temp$flag<-ifelse(temp$actual==temp$predicted,1,0)
+sum(temp$flag)/nrow(temp)
+#71.9% accuracy
+```
+
+This model shows a high degree of improvement over KNN, with an accuracy rate of 71.9%. 
+
+### Naive Bayes
+
+We then used a Naive Bayes model to predict the testing data from a traning model. 
+
+```{r 5.5.3, echo=FALSE, warning = FALSE, message = FALSE}
+library('e1071')
+mod_naive=naiveBayes(as.factor(author)~.,data=train)
+pred_naive=predict(mod_naive,test)
+library(caret)
+predicted_nb=pred_naive
+actual_nb=as.factor(test$author)
+temp_nb<-as.data.frame(cbind(actual_nb,predicted_nb))
+temp_nb$flag<-ifelse(temp_nb$actual_nb==temp_nb$predicted_nb,1,0)
+sum(temp_nb$flag)/nrow(temp_nb)
+#31.4% accuracy
+```
+
+The Naive Bayes model performed worse than the KNN model with only 31.4% accuracy. 
+
+### Multinomial Logistic Regression 
+
+Next, we used multinomial logistic regression with only the first 18 Principal Components. The model will not run with greater than 18 principal components.
+
+```{r 5.5.4, echo=FALSE, warning = FALSE, message = FALSE}
+##other package
+library(nnet)
+subTrain <- train[,c(1:18,1001)]
+multinomModel <- multinom(author ~., data=subTrain)
+predicted_scores <- predict(multinomModel, test, "probs")
+predicted_class <- predict(multinomModel, test)
+train = data.frame(pca$x[,1:1000])
+train['author']=labels
+train_load = pca$rotation[,1:1000]
+test <- scale(DTM_test) %*% train_load
+test <- as.data.frame(test)
+test['author']=labels_test
+#table(predicted_class, test$author)
+1-mean(as.character(predicted_class) != as.character(test$author))
+#46.52% accuracy
+```
+
+The multinomial logistic regression is better than the KNN and Naive Bayes models with an accuracy rate of 46.52%. However, the random forest model still has the highest accuracy. 
+
+From the table below, we see the four models accuracy compared. 
+
+```{r 5.6, echo=FALSE, warning = FALSE, message = FALSE}
+library(ggplot2)
+models <- c('Random Forest','Logistic Regression','KNN','Naive Bayes')
+accuracy <- c(71.92,46.52,32.6,31.4)
+table <- data.frame(models, accuracy)
+table
+ggplot(table, aes(x=models,y=accuracy))+geom_col()+ ggtitle("Summary of Attribution Models Classification Accuracy")
+```
+
+**In summary, the random forest model has the highest classification accuracy of about ~72% on the testing dataset.**
+
+## Association rule mining
+
+```{r 6.1, echo=FALSE, warning = FALSE, message = FALSE}
+file <- "https://raw.githubusercontent.com/jgscott/STA380/master/data/groceries.txt"
+library(tidyverse)
+library(arules)  # has a big ecosystem of packages built around it
+library(arulesViz)
+df <- read.table(file, sep = ',', header = FALSE, fill = TRUE)
+list(names(df))
+# Preprocessing data
+library(reshape2)
+dfid <- tibble::rowid_to_column(df, "User")
+df2 <- melt(dfid, id.vars = c("User"))
+df2$variable <- NULL
+attach(df2)
+df2 <- df2[order(User),]
+detach(df2)
+df2 <- df2[!apply(df2 == "", 1, any),]
+str(df2)
+summary(df2)
+# Barplot of top 20 items
+# the dot (.) means "plug in the argument coming from the left"
+summary(df2$value, maxsum=Inf)
+#sort(df2$value, decreasing=TRUE)
+#head(df2$value, 20)
+frq = table(df2$value)
+dffrq = as.data.frame(frq)
+dffrq <- dffrq[-c(1),]
+# sort
+attach(dffrq)
+dffrq <- dffrq[order(-Freq),]
+barplot(dffrq$Freq[1:20], names=dffrq$Var1[1:20], las=2, cex.names=0.6)
+detach(dffrq)
+```
+
+
+
+
+```{r 6.1.1, echo=FALSE, warning = FALSE, message = FALSE}
+# Turn user into a factor
+df2$User = factor(df2$User)
+# Split
+grocs = split(x=df2$value, f=df2$User)
+# Remove dupes
+grocs = lapply(grocs, unique)
+# Cast as "transactions"
+grocstrans = as(grocs, "transactions")
+summary(grocstrans)
+# Now run the 'apriori' algorithm
+# Look at rules with support > .005 & confidence >.1 & length (# artists) <= 5
+grocrules = apriori(grocstrans, 
+                     parameter=list(support=.005, confidence=.1, maxlen=5))
+# Look at the output... so many rules!
+#inspect(grocrules)
+## Choose a subset
+inspect(subset(grocrules, subset=lift > 3.5))
+inspect(subset(grocrules, subset=confidence > 0.3))
+inspect(subset(grocrules, subset=lift > 2.5 & confidence > 0.3))
+# Plot
+plot(grocrules)
+# can swap the axes and color scales
+plot(grocrules, measure = c("support", "lift"), shading = "confidence")
+# "two key" plot: coloring is by size (order) of item set
+plot(grocrules, method='two-key plot')
+# can now look at subsets driven by the plot
+inspect(subset(grocrules, support > 0.035))
+inspect(subset(grocrules, confidence > 0.7))
+# graph-based visualization
+sub1 = subset(grocrules, subset=confidence > 0.01 & support > 0.005)
+summary(sub1)
+plot(sub1, method='graph')
+#?plot.rules
+plot(head(sub1, 25, by='lift'), method='graph', cex = 0.7)
+# export
+saveAsGraph(head(grocrules, n = 1000, by = "lift"), file = "grocrules.graphml")
+```

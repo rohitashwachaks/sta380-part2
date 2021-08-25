@@ -1,7 +1,7 @@
-detach(gbuils)
 
+#---- Question - 1 ----
 gbuilds <- read.csv("./data/greenbuildings.csv")
-View(gbuilds)
+#View(gbuilds)
 
 str(gbuilds)
 
@@ -18,13 +18,12 @@ gbuilds$amenities <- as.factor(gbuilds$amenities)
 
 attach(gbuilds)
 
-lm(paste("crim~",cols), data = Boston)
 slinreg <- lm(Rent-cluster_rent~green_rating, data = gbuilds)
-summary(slinreg)
+cat(paste(summary(slinreg)))
 # Coefficient of Green_Rating: 2.4125; P-Value: 8e-10
 
 confoundingParams <- colnames(gbuilds)[-c(5,12,13,14,23)]#"Rent","green_rating","LEED","Energystar", Cluster Rent)]
-confoundingParams
+cat(paste(confoundingParams))
 significant <- NULL
 i <- 0
 for(col in confoundingParams)
@@ -46,17 +45,13 @@ for(col in confoundingParams)
   }
 }
 
-significant
+cat(paste(significant))
 
 mlr <- lm(Rent-cluster_rent~ green_rating+class_a, data = gbuilds)
 smry <- summary(mlr)
-smry
+cat(paste(smry))
 
 ## Therefore the class of the building is a confounding variable
 plot(class_a,Rent-cluster_rent)
 
-for(cols in colnames(Boston[,-1]))
-{
-   plot(unlist(Boston[cols]),crim,pch=19,cex=1.5,xlab="Crime Rate",ylab = cols)
-   lines(sort(crim), fitted(mdl)[order(crim)], col='red', type='l') 
-}
+detach(gbuils)

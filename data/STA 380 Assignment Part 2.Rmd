@@ -5,7 +5,7 @@ author: "Rohitashwa Chakraborty, Meha Mehta, Dipali Pandey, Sahitya Sundar Raj V
 date: "8/16/2021"
 ---
 
-# [Gtihub Link](Github link: https://github.com/rohitashwachaks/sta380-part2/blob/main/data/STA%20380%20Assignment%20Part%202.Rmd)
+# [Gtihub Link]( https://github.com/rohitashwachaks/sta380-part2/blob/main/data/STA%20380%20Assignment%20Part%202.Rmd)
 
 # Visual story telling part 1: green buildings
 
